@@ -47,7 +47,7 @@ ValueByte::ValueByte
 	ValueID::ValueGenre const _genre,
 	uint8 const _commandClassId,
 	uint8 const _instance,
-	uint8 const _index,
+	uint16 const _index,
 	string const& _label,
 	string const& _units,
 	bool const _readOnly,
@@ -57,8 +57,7 @@ ValueByte::ValueByte
 ):
 	Value( _homeId, _nodeId, _genre, _commandClassId, _instance, _index, ValueID::ValueType_Byte, _label, _units, _readOnly, _writeOnly, false, _pollIntensity ),
 	m_value( _value ),
-	m_valueCheck( false ),
-	m_newValue( false )
+	m_valueCheck( false )
 {
 	m_min = 0;
 	m_max = 255;

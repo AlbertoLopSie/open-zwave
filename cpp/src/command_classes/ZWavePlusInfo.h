@@ -2,7 +2,7 @@
 //
 //	ZWavePlusInfo.h
 //
-//	Implementation of the Z-Wave COMMAND_CLASS_ZWAVE_PLUS_INFO
+//	Implementation of the Z-Wave COMMAND_CLASS_ZWAVEPLUS_INFO
 //
 //	Copyright (c) 2015
 //
@@ -32,7 +32,8 @@
 
 namespace OpenZWave
 {
-	/** \brief Implements COMMAND_CLASS_ZWAVE_PLUS_INFO (0x5E), a Z-Wave device command class.
+	/** \brief Implements COMMAND_CLASS_ZWAVEPLUS_INFO (0x5E), a Z-Wave device command class.
+	 * \ingroup CommandClass
 	 */
 	class ZWavePlusInfo: public CommandClass
 	{
@@ -41,11 +42,11 @@ namespace OpenZWave
 		virtual ~ZWavePlusInfo(){}
 
 		static uint8 const StaticGetCommandClassId(){ return 0x5E; }
-		static string const StaticGetCommandClassName(){ return "COMMAND_CLASS_ZWAVE_PLUS_INFO"; }
+		static string const StaticGetCommandClassName(){ return "COMMAND_CLASS_ZWAVEPLUS_INFO"; }
 
 		// From CommandClass
 		virtual bool RequestState( uint32 const _requestFlags, uint8 const _instance, Driver::MsgQueue const _queue );
-		virtual bool RequestValue( uint32 const _requestFlags, uint8 const _index, uint8 const _instance, Driver::MsgQueue const _queue );
+		virtual bool RequestValue( uint32 const _requestFlags, uint16 const _index, uint8 const _instance, Driver::MsgQueue const _queue );
 		virtual uint8 const GetCommandClassId()const{ return StaticGetCommandClassId(); }
 		virtual string const GetCommandClassName()const{ return StaticGetCommandClassName(); }
 		virtual bool HandleMsg( uint8 const* _data, uint32 const _length, uint32 const _instance = 1 );

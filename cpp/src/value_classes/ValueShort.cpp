@@ -48,7 +48,7 @@ ValueShort::ValueShort
 	ValueID::ValueGenre const _genre,
 	uint8 const _commandClassId,
 	uint8 const _instance,
-	uint8 const _index,
+	uint16 const _index,
 	string const& _label,
 	string const& _units,
 	bool const _readOnly,
@@ -58,8 +58,7 @@ ValueShort::ValueShort
 ):
   	Value( _homeId, _nodeId, _genre, _commandClassId, _instance, _index, ValueID::ValueType_Short, _label, _units, _readOnly, _writeOnly, false, _pollIntensity ),
 	m_value( _value ),
-	m_valueCheck( 0 ),
-	m_newValue( 0 )
+	m_valueCheck( 0 )
 {
 	m_min = SHRT_MIN;
 	m_max = SHRT_MAX;
@@ -74,8 +73,7 @@ ValueShort::ValueShort
 ):
 	Value(),
 	m_value( 0 ),
-	m_valueCheck( 0 ),
-	m_newValue( 0 )
+	m_valueCheck( 0 )
 {
 	m_min = SHRT_MIN;
 	m_max = SHRT_MAX;

@@ -5,9 +5,9 @@ Version 1.5
    * The patch includes:
       - Added the product ID to the manufacturer_specific.xml file and the specific config file (grb3.xml)
       - Added a new attribute "version" that fixes the version the CC__MULTICHANNEL/MULTIINSTANCE supports in grb3.xml
-      - Modified MultiInstance::ReadXML() to read the new "version" attribute
+      - Modified MultiInstance::ReadXML() to read the new "version" attribute 
       - Modified CommandClass::SetVersion() to out-of-line to allow overriding in descendant classes
-      - Overrode MultiInstance::SetVersion() to check and prevent version downgrading or modifying a hinted version
+      - Overrode MultiInstance::SetVersion() to check and prevent version downgrading or modifying a hinted version  
     * This branch is forked from 1.4.3107 because is the one currently used in Home Assistant/python-openzwave. Perhaps in the future the people at HA project will unfreeze that dependency, but I was neeeding this change to be effective now.
     * Tested succesfully with python-openzwave v0.4.3 and Home Assistant 0.69.1 on a RasPI3
 
@@ -187,6 +187,7 @@ Version 1.5
  - Add alias for FGPB101 Button
  - Add Aeotec ZW129 WallMote Duo (Nechry)
  - Add Aeotec ZW132, ZW139 and ZW140 Nano Switch (Nechry)
+ - ForceInstances now limited to association with the controller node.
  - Add MCOHome Thermostat fan coil MH8-FC-EU (Nechry)
  - Add Fibaro FGDW002 Door Opening Sensor 2 (Nechry)
  - Add Qubino ZMNHTDx Smart meter Z-Wave+ config for version 1 to 3 and 4 to 6, assume new device as 4 to 6 (Nechry)
@@ -241,6 +242,37 @@ Version 1.5
  - Add TKB TZ57 Two channel switch (Nechry)
  - Add Qubino ZMNHYD1 Smart Plug 16A (Nechry)
  - Clear Buffer when reading a new packet - Issue #1596 (Justin)
+ - Add additional mapping for MCO Home MHS-314 switch
+ - Add Zipato PSR03-1B.EU Keyfob 5 Remote (Nechry)
+ - Add Fibaro FGR223 Roller Shutter Controller 3 (Nechry)
+ - Add commented config entry  for Neo coolcam Battery Powered PIR Sensor (Nechry)
+ - Add SmartLock Idlock 150 from sveip  (Nechry)
+ - Pull Request #1686 Added brand Simon from afimar (Nechry)
+ - Fix ThermostatMode CC not working with instances (Justin)
+ - Pull Request #1693 Update manufacturer_specific.xml from afimar (Nechry)
+ - Add Aeotec ZWA006 Smart Boost Timer Switch (Nechry)
+
+Dev Branch:
+ - Rename zwcfg_*.xml to zwcache_*.xml to reflect its not a config file, but a cache. (Justin)
+ - On *nix Platforms - Rename the threads to their functions, so its visible in ps/top etc (Justin)
+ - Pull Request #732 - Fix CPPFLAGS being passed to secondary Makefiles from asac (Justin)
+ - Pull Request #736 - Update dotNet wrapper with new Functions from bufferUnderrun (Justin)
+ - Pull Request #746 - Fix HID exports on Windows from gizmocuz (Justin)
+ - Issue #490 - Preliminary support for Barrier CC from Srirams (Justin)
+ - Refactor the Alarm CC to properly expose the Alarm Types, Events and
+   Params from Version 2 and above devices. See
+   https://github.com/OpenZWave/open-zwave/wiki/Alarm-Command-Class for
+   details - Addresses Issues #558, #481 #145 and #143 (Justin)
+ - Pull Request #923 - Sync dot net zw manager bundle from PascalPiche (Justin)
+ - Pull Request #921 - Sync DotNet ZWLogLevel Enum with the CPP enum from  PascalPiche (Justin)
+ - Implement DeviceID and Serial Number retrieval in ManufacturerSpecific CC (Justin)
+ - Print out effective Options when starting the Driver (Justin)
+ - Check the Controller Library Loaded, and dont' proceed if we don't support the Library when starting the Driver Class (Justin)
+ - SetNodeOn/Off/Level are depreciated and will be removed in 1.8 (Justin)
+ - dotNet Wrapper is now maintained by dotMorten https://github.com/OpenZWave/openzwave-dotnet-uwp (Justin)
+ - Exceptions are now enabled by Default (Justin)
+ - Depreciate the builtin Scene Methods (not related to CENTRAL_SCENE) (Justin)
+ - Fix a build error on OSX - Issue #1593 (Justin)
 
 Version 1.4
  - Released 10th Jan, 2016
