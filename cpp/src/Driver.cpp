@@ -34,16 +34,19 @@
 #include "Scene.h"
 #include "ZWSecurity.h"
 #include "DNSThread.h"
+#include "TimerThread.h"
 #include "Http.h"
 #include "ManufacturerSpecificDB.h"
 
 #include "platform/Event.h"
 #include "platform/Mutex.h"
 #include "platform/SerialController.h"
+#ifdef USE_HID
 #ifdef WINRT
 #include "platform/winRT/HidControllerWinRT.h"
 #else
 #include "platform/HidController.h"
+#endif
 #endif
 #include "platform/Thread.h"
 #include "platform/Log.h"
@@ -153,6 +156,8 @@ m_init( false ),
 m_awakeNodesQueried( false ),
 m_allNodesQueried( false ),
 m_notifytransactions( false ),
+m_timer ( new TimerThread( this ) ),
+m_timerThread ( new Thread( "timer" ) ),
 m_controllerInterfaceType( _interface ),
 m_controllerPath( _controllerPath ),
 m_controller( NULL ),
@@ -203,6 +208,7 @@ m_badroutes( 0 ),
 m_noack( 0 ),
 m_netbusy( 0 ),
 m_notidle( 0 ),
+m_txverified( 0 ),
 m_nondelivery( 0 ),
 m_routedbusy( 0 ),
 m_broadcastReadCnt( 0 ),
@@ -233,11 +239,13 @@ m_eventMutex (new Mutex() )
 
 	initNetworkKeys(false);
 
+#ifdef USE_HID
 	if( ControllerInterface_Hid == _interface )
 	{
 		m_controller = new HidController();
 	}
 	else
+#endif
 	{
 		m_controller = new SerialController();
 	}
@@ -280,7 +288,7 @@ Driver::~Driver
 	{
 		if( save )
 		{
-			WriteConfig();
+			WriteCache();
 			Scene::WriteXML( "zwscene.xml" );
 		}
 	}
@@ -301,6 +309,10 @@ Driver::~Driver
 
 	m_driverThread->Stop();
 	m_driverThread->Release();
+
+  m_timerThread->Stop();
+  m_timerThread->Release();
+  delete m_timer;
 
 	m_sendMutex->Release();
 
@@ -389,6 +401,7 @@ void Driver::Start
 	// Start the thread that will handle communications with the Z-Wave network
 	m_driverThread->Start( Driver::DriverThreadEntryPoint, this );
 	m_dnsThread->Start ( DNSThread::DNSThreadEntryPoint, m_dns);
+  m_timerThread->Start( TimerThread::TimerThreadEntryPoint, m_timer );
 }
 
 //-----------------------------------------------------------------------------
@@ -680,10 +693,10 @@ void Driver::RemoveQueues
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
-// <Driver::ReadConfig>
+// <Driver::ReadCache>
 // Read our configuration from an XML document
 //-----------------------------------------------------------------------------
-bool Driver::ReadConfig
+bool Driver::ReadCache
 (
 )
 {
@@ -702,13 +715,13 @@ bool Driver::ReadConfig
 	{
 		return false;
 	}
-
+	doc.SetUserData((void *)filename.c_str());
 	TiXmlElement const* driverElement = doc.RootElement();
 
 	// Version
 	if( TIXML_SUCCESS != driverElement->QueryIntAttribute( "version", &intVal ) || (uint32)intVal != c_configVersion )
 	{
-		Log::Write( LogLevel_Warning, "WARNING: Driver::ReadConfig - %s is from an older version of OpenZWave and cannot be loaded.", filename.c_str() );
+		Log::Write( LogLevel_Warning, "WARNING: Driver::ReadCache - %s is from an older version of OpenZWave and cannot be loaded.", filename.c_str() );
 		return false;
 	}
 
@@ -728,13 +741,13 @@ bool Driver::ReadConfig
 
 		if( homeId != m_homeId )
 		{
-			Log::Write( LogLevel_Warning, "WARNING: Driver::ReadConfig - Home ID in file %s is incorrect", filename.c_str() );
+			Log::Write( LogLevel_Warning, "WARNING: Driver::ReadCache - Home ID in file %s is incorrect", filename.c_str() );
 			return false;
 		}
 	}
 	else
 	{
-		Log::Write( LogLevel_Warning, "WARNING: Driver::ReadConfig - Home ID is missing from file %s", filename.c_str() );
+		Log::Write( LogLevel_Warning, "WARNING: Driver::ReadCache - Home ID is missing from file %s", filename.c_str() );
 		return false;
 	}
 
@@ -743,13 +756,13 @@ bool Driver::ReadConfig
 	{
 		if( (uint8)intVal != m_Controller_nodeId )
 		{
-			Log::Write( LogLevel_Warning, "WARNING: Driver::ReadConfig - Controller Node ID in file %s is incorrect", filename.c_str() );
+			Log::Write( LogLevel_Warning, "WARNING: Driver::ReadCache - Controller Node ID in file %s is incorrect", filename.c_str() );
 			return false;
 		}
 	}
 	else
 	{
-		Log::Write( LogLevel_Warning, "WARNING: Driver::ReadConfig - Node ID is missing from file %s", filename.c_str() );
+		Log::Write( LogLevel_Warning, "WARNING: Driver::ReadCache - Node ID is missing from file %s", filename.c_str() );
 		return false;
 	}
 
@@ -825,10 +838,10 @@ bool Driver::ReadConfig
 }
 
 //-----------------------------------------------------------------------------
-// <Driver::WriteConfig>
+// <Driver::WriteCache>
 // Write ourselves to an XML document
 //-----------------------------------------------------------------------------
-void Driver::WriteConfig
+void Driver::WriteCache
 (
 )
 {
@@ -838,7 +851,7 @@ void Driver::WriteConfig
 		Log::Write( LogLevel_Warning, "WARNING: Tried to write driver config with no home ID set");
 		return;
 	}
-
+	Log::Write(LogLevel_Info, "Saving Cache");
 	// Create a new XML document to contain the driver configuration
 	TiXmlDocument doc;
 	TiXmlDeclaration* decl = new TiXmlDeclaration( "1.0", "utf-8", "" );
@@ -846,7 +859,7 @@ void Driver::WriteConfig
 	doc.LinkEndChild( decl );
 	doc.LinkEndChild( driverElement );
 
-	driverElement->SetAttribute( "xmlns", "http://code.google.com/p/open-zwave/" );
+	driverElement->SetAttribute( "xmlns", "https://github.com/OpenZWave/open-zwave" );
 
 	snprintf( str, sizeof(str), "%d", c_configVersion );
 	driverElement->SetAttribute( "version", str );
@@ -879,7 +892,12 @@ void Driver::WriteConfig
 		{
 			if( m_nodes[i] )
 			{
-				m_nodes[i]->WriteXML( driverElement );
+				if (m_nodes[i]->GetCurrentQueryStage() == Node::QueryStage_Complete) {
+					m_nodes[i]->WriteXML( driverElement );
+					Log::Write(LogLevel_Info, i, "Cache Save for Node %d as its QueryStage_Complete", i);
+				} else {
+					Log::Write(LogLevel_Info, i, "Skipping Cache Save for Node %d as its not QueryStage_Complete", i);
+				}
 			}
 		}
 	}
@@ -1032,7 +1050,7 @@ void Driver::SendMsg
 		if( Node* node = GetNode(_msg->GetTargetNodeId()) )
 		{
 			/* if the node Supports the Security Class - check if this message is meant to be encapsulated */
-			if ( node->GetCommandClass(Security::StaticGetCommandClassId() ) )
+			if ( node->GetCommandClass(Security::StaticGetCommandClassId()) )
 			{
 				CommandClass *cc = node->GetCommandClass(_msg->GetSendingCommandClass());
 				if ( (cc) && (cc->IsSecured()) )
@@ -1580,6 +1598,11 @@ bool Driver::HandleErrorResponse
 		m_notidle++;
 		Log::Write( LogLevel_Info, _nodeId, "ERROR: %s failed. Network is busy.", _funcStr );
 	}
+	else if ( _error == TRANSMIT_COMPLETE_VERIFIED )
+	{
+		m_txverified++;
+		Log::Write( LogLevel_Info, _nodeId, "ERROR: %s failed. Transmit Verified.", _funcStr );
+	}
 	if( Node* node = GetNodeUnsafe( _nodeId ) )
 	{
 		if( ++node->m_errors >= 3 )
@@ -1663,6 +1686,7 @@ void Driver::CheckCompletedNodeQueries
 			}
 		}
 	}
+	WriteCache();
 }
 
 //-----------------------------------------------------------------------------
@@ -1714,7 +1738,9 @@ bool Driver::ReadMsg
 (
 )
 {
-	uint8 buffer[1024] = {0};
+	uint8 buffer[1024];
+
+	memset(buffer, 0, sizeof(uint8)* 1024);
 
 	if( !m_controller->Read( buffer, 1 ) )
 	{
@@ -1796,7 +1822,7 @@ bool Driver::ReadMsg
 			m_readCnt++;
 
 			// Process the received message
-			ProcessMsg( &buffer[2] );
+			ProcessMsg( &buffer[2], length-2 );
 		}
 		else
 		{
@@ -1879,7 +1905,8 @@ bool Driver::ReadMsg
 //-----------------------------------------------------------------------------
 void Driver::ProcessMsg
 (
-		uint8* _data
+		uint8* _data,
+		uint8 _length
 )
 {
 	bool handleCallback = true;
@@ -1961,35 +1988,35 @@ void Driver::ProcessMsg
 				/* if the Node has something else to send, it will encrypt a message and send it as a MessageEncapNonceGet */
 				if (SecurityCmd_MessageEncapNonceGet == SecurityCmd )
 				{
-				    Log::Write(LogLevel_Info,  _data[3], "Received SecurityCmd_MessageEncapNonceGet from node %d - Sending New Nonce", _data[3] );
-				    LockGuard LG(m_nodeMutex);
-				    Node* node = GetNode( _data[3] );
-				    if( node ) {
-				        _nonce = node->GenerateNonceKey();
-				    } else {
-				        Log::Write(LogLevel_Warning, _data[3], "Couldn't Generate Nonce Key for Node %d", _data[3]);
-				        return;
-				    }
-				    SendNonceKey(_data[3], _nonce);
+					Log::Write(LogLevel_Info,  _data[3], "Received SecurityCmd_MessageEncapNonceGet from node %d - Sending New Nonce", _data[3] );
+					LockGuard LG(m_nodeMutex);
+					Node* node = GetNode( _data[3] );
+					if( node ) {
+						_nonce = node->GenerateNonceKey();
+					} else {
+						Log::Write(LogLevel_Warning, _data[3], "Couldn't Generate Nonce Key for Node %d", _data[3]);
+						return;
+					}
+					SendNonceKey(_data[3], _nonce);
 				}
 
 				wasencrypted = true;
 
 			} else {
-			    /* if the Node has something else to send, it will encrypt a message and send it as a MessageEncapNonceGet */
-			    if (SecurityCmd_MessageEncapNonceGet == SecurityCmd )
-			    {
-			        Log::Write(LogLevel_Info,  _data[3], "Received SecurityCmd_MessageEncapNonceGet from node %d - Sending New Nonce", _data[3] );
-			        LockGuard LG(m_nodeMutex);
-			        Node* node = GetNode( _data[3] );
-			        if( node ) {
-			            _nonce = node->GenerateNonceKey();
-			        } else {
-			            Log::Write(LogLevel_Warning, _data[3], "Couldn't Generate Nonce Key for Node %d", _data[3]);
-			            return;
-			        }
-			        SendNonceKey(_data[3], _nonce);
-			    }
+				/* if the Node has something else to send, it will encrypt a message and send it as a MessageEncapNonceGet */
+				if (SecurityCmd_MessageEncapNonceGet == SecurityCmd )
+				{
+					Log::Write(LogLevel_Info,  _data[3], "Received SecurityCmd_MessageEncapNonceGet from node %d - Sending New Nonce", _data[3] );
+					LockGuard LG(m_nodeMutex);
+					Node* node = GetNode( _data[3] );
+					if( node ) {
+						_nonce = node->GenerateNonceKey();
+					} else {
+						Log::Write(LogLevel_Warning, _data[3], "Couldn't Generate Nonce Key for Node %d", _data[3]);
+						return;
+					}
+					SendNonceKey(_data[3], _nonce);
+				}
 				/* it failed for some reason, lets just move on */
 				m_expectedReply = 0;
 				m_expectedNodeId = 0;
@@ -2044,6 +2071,12 @@ void Driver::ProcessMsg
 		{
 			Log::Write( LogLevel_Detail, "" );
 			HandleGetRandomResponse( _data );
+			break;
+		}
+		case FUNC_ID_SERIAL_API_SETUP:
+		{
+			Log::Write( LogLevel_Detail, "" );
+			HandleSerialAPISetupResponse( _data );
 			break;
 		}
 		case FUNC_ID_ZW_MEMORY_GET_ID:
@@ -2221,6 +2254,25 @@ void Driver::ProcessMsg
 			}
 			break;
 		}
+		/* Ignore these. They are manufacturer proprietary */
+		case FUNC_ID_PROPRIETARY_0:
+		case FUNC_ID_PROPRIETARY_1:
+		case FUNC_ID_PROPRIETARY_2:
+		case FUNC_ID_PROPRIETARY_3:
+		case FUNC_ID_PROPRIETARY_4:
+		case FUNC_ID_PROPRIETARY_5:
+		case FUNC_ID_PROPRIETARY_6:
+		case FUNC_ID_PROPRIETARY_7:
+		case FUNC_ID_PROPRIETARY_8:
+		case FUNC_ID_PROPRIETARY_9:
+		case FUNC_ID_PROPRIETARY_A:
+		case FUNC_ID_PROPRIETARY_B:
+		case FUNC_ID_PROPRIETARY_C:
+		case FUNC_ID_PROPRIETARY_D:
+		case FUNC_ID_PROPRIETARY_E:
+		{
+			break;
+		}
 		default:
 		{
 			Log::Write( LogLevel_Detail, "" );
@@ -2241,7 +2293,7 @@ void Driver::ProcessMsg
 		}
 		case FUNC_ID_ZW_SEND_DATA:
 		{
-			HandleSendDataRequest( _data, false );
+			HandleSendDataRequest( _data, _length, false );
 			break;
 		}
 		case FUNC_ID_ZW_REPLICATION_COMMAND_COMPLETE:
@@ -2255,7 +2307,7 @@ void Driver::ProcessMsg
 		}
 		case FUNC_ID_ZW_REPLICATION_SEND_DATA:
 		{
-			HandleSendDataRequest( _data, true );
+			HandleSendDataRequest( _data, _length, true );
 			break;
 		}
 		case FUNC_ID_ZW_ASSIGN_RETURN_ROUTE:
@@ -2367,6 +2419,25 @@ void Driver::ProcessMsg
 			HandleSerialAPIResetRequest( _data );
 			break;
 		}
+		/* Ignore these. They are manufacturer proprietary */
+		case FUNC_ID_PROPRIETARY_0:
+		case FUNC_ID_PROPRIETARY_1:
+		case FUNC_ID_PROPRIETARY_2:
+		case FUNC_ID_PROPRIETARY_3:
+		case FUNC_ID_PROPRIETARY_4:
+		case FUNC_ID_PROPRIETARY_5:
+		case FUNC_ID_PROPRIETARY_6:
+		case FUNC_ID_PROPRIETARY_7:
+		case FUNC_ID_PROPRIETARY_8:
+		case FUNC_ID_PROPRIETARY_9:
+		case FUNC_ID_PROPRIETARY_A:
+		case FUNC_ID_PROPRIETARY_B:
+		case FUNC_ID_PROPRIETARY_C:
+		case FUNC_ID_PROPRIETARY_D:
+		case FUNC_ID_PROPRIETARY_E:
+		{
+			break;
+		}
 		default:
 		{
 			Log::Write( LogLevel_Detail, "" );
@@ -2461,7 +2532,7 @@ void Driver::HandleGetVersionResponse
 
 		{
 			Notification* notification = new Notification( Notification::Type_UserAlerts );
-			notification->SetUserAlertNofification( Notification::Alert_UnsupportedController );
+			notification->SetUserAlertNotification( Notification::Alert_UnsupportedController );
 			QueueNotification( notification );
 		}
 		{
@@ -2486,7 +2557,37 @@ void Driver::HandleGetRandomResponse
 		uint8* _data
 )
 {
-	Log::Write( LogLevel_Info, GetNodeNumber( m_currentMsg ), "Received reply to FUNC_ID_ZW_GET_RANDOM: %s", _data[2] ? "true" : "false" );
+	Log::Write( LogLevel_Info, "Received reply to FUNC_ID_ZW_GET_RANDOM: %s", _data[2] ? "true" : "false" );
+}
+
+void Driver::HandleSerialAPISetupResponse
+(
+		uint8* _data
+)
+{
+	// See INS13954 for description of FUNC_ID_SERIAL_API_SETUP with command 
+	// SERIAL_API_SETUP_CMD_TX_STATUS_REPORT
+	// Note: SERIAL_API_SETUP can do more things than enable this report...
+
+	Log::Write( LogLevel_Info, "Received reply to FUNC_ID_SERIAL_API_SETUP");
+
+	switch (_data[0])
+	{
+	case 1:
+		Log::Write(LogLevel_Info, "Successfully enabled extended txStatusReport.");
+		m_hasExtendedTxStatus = true;
+		break;
+
+	case 0:
+		Log::Write(LogLevel_Info, "Failed to enable extended txStatusReport. Controller might not support it.");
+		m_hasExtendedTxStatus = false;
+		break;
+
+	default:
+		Log::Write(LogLevel_Info, "FUNC_ID_SERIAL_API_SETUP returned unknown status: %u", _data[0]);
+		m_hasExtendedTxStatus = false;
+		break;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -2553,13 +2654,24 @@ void Driver::HandleGetSerialAPICapabilitiesResponse
 	{
 		SendMsg( new Msg( "FUNC_ID_ZW_GET_VIRTUAL_NODES", 0xff, REQUEST, FUNC_ID_ZW_GET_VIRTUAL_NODES, false ), MsgQueue_Command);
 	}
-	else if( IsAPICallSupported( FUNC_ID_ZW_GET_RANDOM ) )
+	if( IsAPICallSupported( FUNC_ID_ZW_GET_RANDOM ) )
 
 	{
 		Msg *msg = new Msg( "FUNC_ID_ZW_GET_RANDOM", 0xff, REQUEST, FUNC_ID_ZW_GET_RANDOM, false );
 		msg->Append( 32 );      // 32 bytes
 		SendMsg( msg, MsgQueue_Command );
 	}
+
+	if( IsAPICallSupported( FUNC_ID_SERIAL_API_SETUP ) )
+
+	{
+		Msg *msg = new Msg( "FUNC_ID_SERIAL_API_SETUP", 0xff, REQUEST, FUNC_ID_SERIAL_API_SETUP, false );
+		msg->Append( SERIAL_API_SETUP_CMD_TX_STATUS_REPORT );
+		msg->Append( 1 );
+		SendMsg( msg, MsgQueue_Command );
+	}
+
+
 	SendMsg( new Msg( "FUNC_ID_SERIAL_API_GET_INIT_DATA", 0xff, REQUEST, FUNC_ID_SERIAL_API_GET_INIT_DATA, false ), MsgQueue_Command);
 	if( !IsBridgeController() )
 	{
@@ -2735,7 +2847,7 @@ void Driver::HandleSerialAPIGetInitDataResponse
 		Manager::Get()->SetDriverReady( this, true );
 
 		// Read the config file first, to get the last known state
-		ReadConfig();
+		ReadCache();
 	}
 	else
 	{
@@ -3094,6 +3206,7 @@ void Driver::HandleGetRoutingInfoResponse
 void Driver::HandleSendDataRequest
 (
 		uint8* _data,
+		uint8 _length,
 		bool _replication
 )
 {
@@ -3108,7 +3221,7 @@ void Driver::HandleSendDataRequest
 		Node* node = GetNodeUnsafe( nodeId );
 		if( node != NULL )
 		{
-			if( _data[3] != 0 )
+			if( _data[3] != TRANSMIT_COMPLETE_OK )
 			{
 				node->m_sentFailed++;
 			}
@@ -3128,6 +3241,44 @@ void Driver::HandleSendDataRequest
 				}
 				Log::Write(LogLevel_Info, nodeId, "Request RTT %d Average Request RTT %d", node->m_lastRequestRTT, node->m_averageRequestRTT );
 			}
+			/* if the frame has txStatus message, then extract it */
+			// petergebruers, changed test (_length > 7) to >= 23 to avoid extracting non-existent data, highest is _data[22]
+			if (_length >= 23) {
+				node->m_txStatusReportSupported = true;
+				// petergebruers:
+				// because OpenZWave uses "ms" everywhere, and wTransmitTicks
+				// has "10 ms" as unit... multiply by 10. This wil avoid
+				// confusion when people look at stats or log files.
+				node->m_txTime = (_data[5] + (_data[4] << 8)) * 10;
+				node->m_hops = _data[6];
+				// petergebruers: there are 5 rssi values because there are
+				// 4 repeaters + 1 sending node
+				strncpy(node->m_rssi_1, rssi_to_string(_data[7]), sizeof(node->m_rssi_1) - 1);
+				strncpy(node->m_rssi_2, rssi_to_string(_data[8]), sizeof(node->m_rssi_2) - 1);
+				strncpy(node->m_rssi_3, rssi_to_string(_data[9]), sizeof(node->m_rssi_3) - 1);
+				strncpy(node->m_rssi_4, rssi_to_string(_data[10]), sizeof(node->m_rssi_4) - 1);
+				strncpy(node->m_rssi_5, rssi_to_string(_data[11]), sizeof(node->m_rssi_5) - 1);
+				node->m_ackChannel = _data[12];
+				node->m_lastTxChannel = _data[13];
+				node->m_routeScheme = (TXSTATUS_ROUTING_SCHEME)_data[14];
+				node->m_routeUsed[0] = _data[15];
+				node->m_routeUsed[1] = _data[16];
+				node->m_routeUsed[2] = _data[17];
+				node->m_routeUsed[3] = _data[18];
+				node->m_routeSpeed = (TXSTATUS_ROUTE_SPEED)_data[19];
+				node->m_routeTries = _data[20];
+				node->m_lastFailedLinkFrom = _data[21];
+				node->m_lastFailedLinkTo = _data[22];
+				Node::NodeData nd;
+				node->GetNodeStatistics(&nd);
+				// petergebruers: changed "ChannelAck" to "AckChannel", to be consistent with docs and "TxChannel"
+				Log::Write( LogLevel_Detail, nodeId, "Extended TxStatus: Time: %d, Hops: %d, Rssi: %s %s %s %s %s, AckChannel: %d, TxChannel: %d, RouteScheme: %s, Route: %d %d %d %d, RouteSpeed: %s, RouteTries: %d, FailedLinkFrom: %d, FailedLinkTo: %d",
+						nd.m_txTime, nd.m_hops, nd.m_rssi_1, nd.m_rssi_2, nd.m_rssi_3, nd.m_rssi_4, nd.m_rssi_4,
+						nd.m_ackChannel, nd.m_lastTxChannel, Manager::GetNodeRouteScheme(&nd).c_str(), nd.m_routeUsed[0],
+						nd.m_routeUsed[1], nd.m_routeUsed[2], nd.m_routeUsed[3], Manager::GetNodeRouteSpeed(&nd).c_str(),
+						nd.m_routeTries, nd.m_lastFailedLinkFrom, nd.m_lastFailedLinkTo);
+			}
+
 		}
 
 		// We do this here since HandleErrorResponse/MoveMessagesToWakeUpQueue can delete m_currentMsg
@@ -3140,7 +3291,7 @@ void Driver::HandleSendDataRequest
 		}
 
 		// Callback ID matches our expectation
-		if( _data[3] != 0 )
+		if( _data[3] != TRANSMIT_COMPLETE_OK )
 		{
 			if( !HandleErrorResponse( _data[3], nodeId, _replication ? "ZW_REPLICATION_END_DATA" : "ZW_SEND_DATA", !_replication ) )
 			{
@@ -3724,7 +3875,7 @@ void Driver::HandleDeleteReturnRouteRequest
 	{
 		return;
 	}
-	if( _data[3] )
+	if( _data[3] != TRANSMIT_COMPLETE_OK)
 	{
 		// Failed
 		HandleErrorResponse( _data[3], m_currentControllerCommand->m_controllerCommandNode, "ZW_DELETE_RETURN_ROUTE", true );
@@ -3755,7 +3906,7 @@ void Driver::HandleSendNodeInformationRequest
 	{
 		return;
 	}
-	if( _data[3] )
+	if( _data[3] != TRANSMIT_COMPLETE_OK )
 	{
 		// Failed
 		HandleErrorResponse( _data[3], m_currentControllerCommand->m_controllerCommandNode, "ZW_SEND_NODE_INFORMATION" );
@@ -4122,6 +4273,7 @@ bool Driver::EnablePoll
 			// send notification to indicate polling is enabled
 			Notification* notification = new Notification( Notification::Type_PollingEnabled );
 			notification->SetHomeAndNodeIds( m_homeId, _valueId.GetNodeId() );
+			notification->SetValueId(_valueId);
 			QueueNotification( notification );
 			Log::Write( LogLevel_Info, nodeId, "EnablePoll for HomeID 0x%.8x, value(cc=0x%02x,in=0x%02x,id=0x%02x)--poll list has %d items",
 					_valueId.GetHomeId(), _valueId.GetCommandClassId(), _valueId.GetIndex(), _valueId.GetInstance(), m_pollList.size() );
@@ -4180,6 +4332,7 @@ bool Driver::DisablePoll
 				// send notification to indicate polling is disabled
 				Notification* notification = new Notification( Notification::Type_PollingDisabled );
 				notification->SetHomeAndNodeIds( m_homeId, _valueId.GetNodeId() );
+				notification->SetValueId(_valueId);
 				QueueNotification( notification );
 				Log::Write( LogLevel_Info, nodeId, "DisablePoll for HomeID 0x%.8x, value(cc=0x%02x,in=0x%02x,id=0x%02x)--poll list has %d items",
 						_valueId.GetHomeId(), _valueId.GetCommandClassId(), _valueId.GetIndex(), _valueId.GetInstance(), m_pollList.size() );
@@ -4396,8 +4549,8 @@ void Driver::PollThreadProc
 						// Request an update of the value
 						CommandClass* cc = node->GetCommandClass( valueId.GetCommandClassId() );
 						if (cc) {
-							uint8 index = valueId.GetIndex();
-							uint8 instance = valueId.GetInstance();
+							uint16_t index = valueId.GetIndex();
+							uint8_t instance = valueId.GetInstance();
 							Log::Write( LogLevel_Detail, node->m_nodeId, "Polling: %s index = %d instance = %d (poll queue has %d messages)", cc->GetCommandClassName().c_str(), index, instance, m_msgQueue[MsgQueue_Poll].size() );
 							cc->RequestValue( 0, index, instance, MsgQueue_Poll );
 						}
@@ -6380,7 +6533,7 @@ void Driver::ReadButtons
 		Log::Write( LogLevel_Debug, "Driver::ReadButtons - zwbutton.xml file not found.");
 		return;
 	}
-
+	doc.SetUserData((void *)filename.c_str());
 	TiXmlElement const* nodesElement = doc.RootElement();
 	str = nodesElement->Value();
 	if( str && strcmp( str, "Nodes" ))
@@ -6606,7 +6759,7 @@ void Driver::HandleSendSlaveNodeInfoRequest
 	{
 		return;
 	}
-	if( _data[3] == 0 )	// finish up
+	if( _data[3] == TRANSMIT_COMPLETE_OK )	// finish up
 	{
 		Log::Write( LogLevel_Info, GetNodeNumber( m_currentMsg ), "SEND_SLAVE_NODE_INFO_COMPLETE OK" );
 		SaveButtons();
@@ -6777,6 +6930,7 @@ void Driver::GetDriverStatistics
 	_data->m_noack = m_noack;
 	_data->m_netbusy = m_netbusy;
 	_data->m_notidle = m_notidle;
+	_data->m_txverified = m_txverified;
 	_data->m_nondelivery = m_nondelivery;
 	_data->m_routedbusy = m_routedbusy;
 	_data->m_broadcastReadCnt = m_broadcastReadCnt;
@@ -7117,11 +7271,11 @@ void Driver::processConfigRevision
 					Log::Write(LogLevel_Warning, node->GetNodeId(), "Config File for Device \"%s\" is out of date", node->GetProductName().c_str());
 					Notification* notification = new Notification( Notification::Type_UserAlerts );
 					notification->SetHomeAndNodeIds( m_homeId, node->GetNodeId() );
-					notification->SetUserAlertNofification(Notification::Alert_ConfigOutOfDate);
+					notification->SetUserAlertNotification(Notification::Alert_ConfigOutOfDate);
 					QueueNotification( notification );
 
 					bool update = false;
-				    Options::Get()->GetOptionAsBool("AutoUpdateConfigFile", &update);
+					Options::Get()->GetOptionAsBool("AutoUpdateConfigFile", &update);
 
 					if (update)
 						m_mfs->updateConfigFile(this, node);
@@ -7133,14 +7287,14 @@ void Driver::processConfigRevision
 				if (m_mfs->getRevision() < (unsigned long)atol(result->result.c_str())) {
 					Log::Write(LogLevel_Warning, "Config Revision of ManufacturerSpecific Database is out of date");
 					Notification* notification = new Notification( Notification::Type_UserAlerts );
-					notification->SetUserAlertNofification(Notification::Alert_MFSOutOfDate);
+					notification->SetUserAlertNotification(Notification::Alert_MFSOutOfDate);
 					QueueNotification( notification );
 
 					bool update = false;
-				    Options::Get()->GetOptionAsBool("AutoUpdateConfigFile", &update);
+					Options::Get()->GetOptionAsBool("AutoUpdateConfigFile", &update);
 
-				    if (update) {
-				    	m_mfs->updateMFSConfigFile(this);
+					if (update) {
+						m_mfs->updateMFSConfigFile(this);
 					} else {
 						m_mfs->checkInitialized();
 					}
@@ -7154,17 +7308,17 @@ void Driver::processConfigRevision
 	} else if (result->status == DNSError_NotFound) {
 		Log::Write(LogLevel_Info, "Not Found for Device record %s", result->lookup.c_str());
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_DNSError);
+		notification->SetUserAlertNotification(Notification::Alert_DNSError);
 		QueueNotification( notification );
 	} else if (result->status == DNSError_DomainError) {
 		Log::Write(LogLevel_Warning, "Domain Error Looking up record %s", result->lookup.c_str());
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_DNSError);
+		notification->SetUserAlertNotification(Notification::Alert_DNSError);
 		QueueNotification( notification );
 	} else if (result->status == DNSError_InternalError) {
 		Log::Write(LogLevel_Warning, "Internal DNS Error looking up record %s", result->lookup.c_str());
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_DNSError);
+		notification->SetUserAlertNotification(Notification::Alert_DNSError);
 		QueueNotification( notification );
 	}
 	m_mfs->checkInitialized();
@@ -7231,7 +7385,7 @@ bool Driver::refreshNodeConfig
 	Options::Get()->GetOptionAsString("ReloadAfterUpdate",&action);
 	if (ToUpper(action) == "NEVER") {
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_NodeReloadReqired);
+		notification->SetUserAlertNotification(Notification::Alert_NodeReloadReqired);
 		QueueNotification( notification );
 		return true;
 	} else if (ToUpper(action) == "IMMEDIATE") {
@@ -7292,6 +7446,7 @@ void Driver::ReloadNode
 	TiXmlDocument doc;
 	if( doc.LoadFile( filename.c_str(), TIXML_ENCODING_UTF8 ) )
 	{
+		doc.SetUserData((void *)filename.c_str());
 		TiXmlElement * driverElement = doc.RootElement();
 
 		TiXmlNode * nodeElement = driverElement->FirstChild();
@@ -7304,8 +7459,10 @@ void Driver::ReloadNode
 					// Get the node Id from the XML
 					if( TIXML_SUCCESS == nodeElement->ToElement()->QueryIntAttribute( "id", &intVal ) )
 					{
-						if (intVal == _nodeId)
+						if (intVal == _nodeId) {
 							driverElement->RemoveChild(nodeElement);
+							break;
+						}
 					}
 				}
 			}
@@ -7340,7 +7497,7 @@ void Driver::processDownload
 			m_mfs->mfsConfigDownloaded(this, download->filename, false);
 		}
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		QueueNotification( notification );
 	}
 
@@ -7355,14 +7512,14 @@ bool Driver::downloadConfigRevision
 	if (node->getFileConfigRevision() <= 0) {
 		Log::Write(LogLevel_Warning, node->GetNodeId(), "Config File Revision is 0. Not Updating");
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		QueueNotification( notification );
 		return false;
 	}
 	if (node->getFileConfigRevision() >= node->getLatestConfigRevision()) {
 		Log::Write(LogLevel_Warning, node->GetNodeId(), "Config File Revision %d is equal to or greater than current revision %d", node->getFileConfigRevision(), node->getLatestConfigRevision());
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		QueueNotification( notification );
 		return false;
 	} else {
@@ -7377,14 +7534,14 @@ bool Driver::downloadMFSRevision
 	if (m_mfs->getRevision() <= 0) {
 		Log::Write(LogLevel_Warning, "ManufacturerSpecific Revision is 0. Not Updating");
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		QueueNotification( notification );
 		return false;
 	}
 	if (m_mfs->getRevision() >= m_mfs->getLatestRevision()) {
 		Log::Write(LogLevel_Warning, "ManufacturerSpecific Revision %d is equal to or greater than current revision %d", m_mfs->getRevision(), m_mfs->getLatestRevision());
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		QueueNotification( notification );
 		return false;
 	}
@@ -7425,10 +7582,10 @@ void Driver::ProcessEventMsg
 }
 
 //-----------------------------------------------------------------------------
-// <Manager::GetNodeStatistics>
-// Retrieve driver based counters.
+// <Manager::GetMetaData>
+// Retrieve MetaData about a Node.
 //-----------------------------------------------------------------------------
-string Driver::GetMetaData
+string const Driver::GetMetaData
 (
 		uint8 const _nodeId,
 		Node::MetaDataFields _metadata
@@ -7442,6 +7599,28 @@ string Driver::GetMetaData
 	}
 	return "";
 }
+
+//-----------------------------------------------------------------------------
+// <Manager::GetMetaData>
+// Retrieve MetaData about a Node.
+//-----------------------------------------------------------------------------
+Node::ChangeLogEntry const Driver::GetChangeLog
+(
+		uint8 const _nodeId,
+		uint32_t revision
+)
+{
+	LockGuard LG(m_nodeMutex);
+	Node* node = GetNode( _nodeId );
+	if( node != NULL )
+	{
+		return node->GetChangeLog( revision );
+	}
+	Node::ChangeLogEntry cle;
+	cle.revision = -1;
+	return cle;
+}
+
 
 ManufacturerSpecificDB *Driver::GetManufacturerSpecificDB
 (

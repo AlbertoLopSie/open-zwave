@@ -59,15 +59,6 @@ enum {
         DeviceSpecificGet_DeviceIDType_PseudoRandom = 0x02,
 };
 
-enum {
-    ManufacturerSpecific_LoadedConfig,
-	ManufacturerSpecific_LocalConfig,
-	ManufacturerSpecific_LatestConfig,
-	ManufacturerSpecific_DeviceID,
-    ManufacturerSpecific_SerialNumber
-};
-
-
 //-----------------------------------------------------------------------------
 // <ManufacturerSpecific::ManufacturerSpecific>
 // Constructor
@@ -157,7 +148,7 @@ bool ManufacturerSpecific::RequestValue
 		// This command class doesn't work with multiple instances
 		return false;
 	}
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "ManufacturerSpecificCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->Append( GetNodeId() );
@@ -235,6 +226,8 @@ bool ManufacturerSpecific::HandleMsg
 		{
 			// Attempt to create the config parameters
 			SetProductDetails(manufacturerId, productType, productId);
+			ClearStaticRequest( StaticRequest_Values );
+			node->m_manufacturerSpecificClassReceived = true;
 
 			if( node->getConfigPath().size() > 0 )
 			{
@@ -244,8 +237,6 @@ bool ManufacturerSpecific::HandleMsg
 			Log::Write( LogLevel_Info, GetNodeId(), "Received manufacturer specific report from node %d: Manufacturer=%s, Product=%s",
 				    GetNodeId(), node->GetManufacturerName().c_str(), node->GetProductName().c_str() );
 			Log::Write( LogLevel_Info, GetNodeId(), "Node Identity Codes: %.4x:%.4x:%.4x", manufacturerId, productType, productId );
-			ClearStaticRequest( StaticRequest_Values );
-			node->m_manufacturerSpecificClassReceived = true;
 		}
 
 		// Notify the watchers of the name changes
@@ -271,12 +262,12 @@ bool ManufacturerSpecific::HandleMsg
                 deviceID += temp_chr;
         }
 		if (deviceIDType == DeviceSpecificGet_DeviceIDType_FactoryDefault) {
-				ValueString *default_value = static_cast<ValueString*>( GetValue(_instance, ManufacturerSpecific_DeviceID) );
+				ValueString *default_value = static_cast<ValueString*>( GetValue(_instance, ValueID_Index_ManufacturerSpecific::DeviceID) );
 				default_value->OnValueRefreshed(deviceID);
 				default_value->Release();
 		}
 		else if (deviceIDType == DeviceSpecificGet_DeviceIDType_SerialNumber) {
-				ValueString *serial_value = static_cast<ValueString*>( GetValue(_instance, ManufacturerSpecific_SerialNumber) );
+				ValueString *serial_value = static_cast<ValueString*>( GetValue(_instance, ValueID_Index_ManufacturerSpecific::SerialNumber) );
 				serial_value->OnValueRefreshed(deviceID);
 				serial_value->Release();
 		}
@@ -313,6 +304,7 @@ bool ManufacturerSpecific::LoadConfigXML
 		Log::Write( LogLevel_Info, GetNodeId(), "Unable to find or load Config Param file %s", filename.c_str() );
 		return false;
 	}
+	doc->SetUserData((void *)filename.c_str());
 	Node::QueryStage qs = GetNodeUnsafe()->GetCurrentQueryStage();
 	if( qs == Node::QueryStage_ManufacturerSpecific1 )
 	{
@@ -324,8 +316,8 @@ bool ManufacturerSpecific::LoadConfigXML
 		{
 			 GetNodeUnsafe()->ReadDeviceProtocolXML( doc->RootElement() );
 		}
-		 GetNodeUnsafe()->ReadCommandClassesXML( doc->RootElement() );
 	}
+	GetNodeUnsafe()->ReadCommandClassesXML( doc->RootElement() );
 	GetNodeUnsafe()->ReadMetaDataFromXML( doc->RootElement() );
 	delete doc;
 	return true;
@@ -354,11 +346,11 @@ void ManufacturerSpecific::CreateVars
 	if (_instance == 1) {
 		if( Node* node = GetNodeUnsafe() )
 		{
-			node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ManufacturerSpecific_LoadedConfig, "Loaded Config Revision", "", true, false, m_loadedConfigRevision, 0 );
-			node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ManufacturerSpecific_LocalConfig, "Config File Revision", "", true, false, m_fileConfigRevision, 0 );
-			node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ManufacturerSpecific_LatestConfig, "Latest Available Config File Revision", "", true, false, m_latestConfigRevision, 0 );
-            node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ManufacturerSpecific_DeviceID, "Device ID", "", true, false, "", 0);
-            node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ManufacturerSpecific_SerialNumber, "Serial Number", "", true, false, "", 0);
+			node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ManufacturerSpecific::LoadedConfig, "Loaded Config Revision", "", true, false, m_loadedConfigRevision, 0 );
+			node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ManufacturerSpecific::LocalConfig, "Config File Revision", "", true, false, m_fileConfigRevision, 0 );
+			node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ManufacturerSpecific::LatestConfig, "Latest Available Config File Revision", "", true, false, m_latestConfigRevision, 0 );
+			node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ManufacturerSpecific::DeviceID, "Device ID", "", true, false, "", 0);
+			node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ManufacturerSpecific::SerialNumber, "Serial Number", "", true, false, "", 0);
 		}
 	}
 
@@ -376,7 +368,7 @@ void ManufacturerSpecific::setLatestConfigRevision
 
 	m_latestConfigRevision = rev;
 
-	if( ValueInt* value = static_cast<ValueInt*>( GetValue( 1, ManufacturerSpecific_LatestConfig ) ) )
+	if( ValueInt* value = static_cast<ValueInt*>( GetValue( 1, ValueID_Index_ManufacturerSpecific::LatestConfig ) ) )
 	{
 		value->OnValueRefreshed( rev );
 		value->Release();
@@ -396,7 +388,7 @@ void ManufacturerSpecific::setFileConfigRevision
 {
 	m_fileConfigRevision = rev;
 
-	if( ValueInt* value = static_cast<ValueInt*>( GetValue( 1, ManufacturerSpecific_LocalConfig ) ) )
+	if( ValueInt* value = static_cast<ValueInt*>( GetValue( 1, ValueID_Index_ManufacturerSpecific::LocalConfig ) ) )
 	{
 		value->OnValueRefreshed( rev );
 		value->Release();
@@ -416,7 +408,7 @@ void ManufacturerSpecific::setLoadedConfigRevision
 {
 	m_latestConfigRevision = rev;
 
-	if( ValueInt* value = static_cast<ValueInt*>( GetValue( 1, ManufacturerSpecific_LoadedConfig ) ) )
+	if( ValueInt* value = static_cast<ValueInt*>( GetValue( 1, ValueID_Index_ManufacturerSpecific::LoadedConfig ) ) )
 	{
 		value->OnValueRefreshed( rev );
 		value->Release();

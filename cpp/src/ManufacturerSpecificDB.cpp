@@ -115,7 +115,7 @@ void ManufacturerSpecificDB::LoadConfigFileRevision
 			Log::Write( LogLevel_Info, "Unable to load config file %s", path.c_str() );
 			return;
 		}
-
+		pDoc->SetUserData((void *)path.c_str());
 		TiXmlElement const* root = pDoc->RootElement();
 		char const *str = root->Value();
 		if( str && !strcmp( str, "Product" ) )
@@ -159,7 +159,7 @@ bool ManufacturerSpecificDB::LoadProductXML
 		Log::Write( LogLevel_Info, "Unable to load %s", filename.c_str() );
 		return false;
 	}
-
+	pDoc->SetUserData((void *)filename.c_str());
 	TiXmlElement const* root = pDoc->RootElement();
 
 	char const* str;
@@ -331,7 +331,7 @@ void ManufacturerSpecificDB::checkConfigFiles
 				} else {
 					Log::Write(LogLevel_Warning, "Can't download file %s", path.c_str());
 					Notification* notification = new Notification( Notification::Type_UserAlerts );
-					notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+					notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 					driver->QueueNotification( notification );
 				}
 			} else if (iter != m_downloading.end()) {
@@ -448,7 +448,7 @@ bool ManufacturerSpecificDB::updateConfigFile
 	} else {
 		Log::Write(LogLevel_Warning, "Can't download Config file %s", node->getConfigPath().c_str());
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		driver->QueueNotification( notification );
 	}
 	checkInitialized();
@@ -470,7 +470,7 @@ bool ManufacturerSpecificDB::updateMFSConfigFile
 	} else {
 		Log::Write(LogLevel_Warning, "Can't download ManufacturerSpecifix.xml Config file");
 		Notification* notification = new Notification( Notification::Type_UserAlerts );
-		notification->SetUserAlertNofification(Notification::Alert_ConfigFileDownloadFailed);
+		notification->SetUserAlertNotification(Notification::Alert_ConfigFileDownloadFailed);
 		driver->QueueNotification( notification );
 	}
 

@@ -199,7 +199,7 @@ bool ThermostatFanMode::RequestValue
 
 	if( _getTypeEnum == ThermostatFanModeCmd_Get || _getTypeEnum == 0 )
 	{
-		if ( IsGetSupported() )
+		if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 		{
 			// Request the current fan mode
 			Msg* msg = new Msg( "ThermostatFanModeCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
@@ -245,7 +245,7 @@ bool ThermostatFanMode::HandleMsg
 		if( validMode )
 		{
 			// We have received the thermostat mode from the Z-Wave device
-			if( ValueList* valueList = static_cast<ValueList*>( GetValue( _instance, 0 ) ) )
+			if( ValueList* valueList = static_cast<ValueList*>( GetValue( _instance, ValueID_Index_ThermostatFanMode::FanMode ) ) )
 			{
 				valueList->OnValueRefreshed( (int32)_data[1] );
 				if (valueList->GetItem())
@@ -353,7 +353,7 @@ void ThermostatFanMode::CreateVars
 
 	if( Node* node = GetNodeUnsafe() )
 	{
-		node->CreateValueList( ValueID::ValueGenre_User, GetCommandClassId(), _instance, 0, "Fan Mode", "", false, false, 1, m_supportedModes, m_supportedModes[0].m_value, 0 );
+		node->CreateValueList( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_ThermostatFanMode::FanMode, "Fan Mode", "", false, false, 1, m_supportedModes, m_supportedModes[0].m_value, 0 );
 	}
 }
 

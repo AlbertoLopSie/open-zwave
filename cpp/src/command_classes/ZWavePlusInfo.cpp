@@ -2,7 +2,7 @@
 //
 //	ZWavePlusInfo.cpp
 //
-//	Implementation of the Z-Wave COMMAND_CLASS_ZWAVE_PLUS_INFO
+//	Implementation of the Z-Wave COMMAND_CLASS_ZWAVEPLUS_INFO
 //
 //	Copyright (c) 2015
 //
@@ -45,12 +45,6 @@ enum ZWavePlusInfoCmdEnum
 	ZWavePlusInfoCmd_Report
 };
 
-enum
-{
-	ZWavePlusInfoIndex_Version = 0x00,
-	ZWavePlusInfoIndex_InstallerIcon,
-	ZWavePlusInfoIndex_UserIcon,
-};
 
 
 
@@ -99,7 +93,7 @@ bool ZWavePlusInfo::RequestValue
 	Driver::MsgQueue const _queue
 )
 {
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "ZWavePlusInfoCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->SetInstance( this, _instance );
@@ -146,20 +140,20 @@ bool ZWavePlusInfo::HandleMsg
 //			ClearStaticRequest( StaticRequest_Values );
 		}
 		ValueByte* value;
-		if( (value = static_cast<ValueByte*>( GetValue( _instance, ZWavePlusInfoIndex_Version ) )) )
+		if( (value = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_ZWavePlusInfo::Version ) )) )
 		{
 			value->OnValueRefreshed( version );
 			value->Release();
 		}
 
 		ValueShort* svalue;
-		if( (svalue = static_cast<ValueShort*>( GetValue( _instance, ZWavePlusInfoIndex_InstallerIcon ) )) )
+		if( (svalue = static_cast<ValueShort*>( GetValue( _instance, ValueID_Index_ZWavePlusInfo::InstallerIcon ) )) )
 		{
 			svalue->OnValueRefreshed( installerIcon );
 			svalue->Release();
 		}
 
-		if( (svalue = static_cast<ValueShort*>( GetValue( _instance, ZWavePlusInfoIndex_UserIcon ) )) )
+		if( (svalue = static_cast<ValueShort*>( GetValue( _instance, ValueID_Index_ZWavePlusInfo::UserIcon ) )) )
 		{
 			svalue->OnValueRefreshed( deviceType );
 			svalue->Release();
@@ -184,9 +178,9 @@ void ZWavePlusInfo::CreateVars
 {
 	if( Node* node = GetNodeUnsafe() )
 	{
-		node->CreateValueByte( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ZWavePlusInfoIndex_Version, "ZWave+ Version", "", true, false, 0, 0 );
-		node->CreateValueShort( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ZWavePlusInfoIndex_InstallerIcon, "InstallerIcon", "", true, false, 0, 0 );
-		node->CreateValueShort( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ZWavePlusInfoIndex_UserIcon, "UserIcon", "", true, false, 0, 0 );
+		node->CreateValueByte( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ZWavePlusInfo::Version, "ZWave+ Version", "", true, false, 0, 0 );
+		node->CreateValueShort( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ZWavePlusInfo::InstallerIcon, "InstallerIcon", "", true, false, 0, 0 );
+		node->CreateValueShort( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_ZWavePlusInfo::UserIcon, "UserIcon", "", true, false, 0, 0 );
 
 	}
 }

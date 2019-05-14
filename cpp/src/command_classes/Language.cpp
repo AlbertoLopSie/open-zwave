@@ -44,12 +44,6 @@ enum LanguageCmd
 	LanguageCmd_Report	= 0x03
 };
 
-enum
-{
-	LanguageIndex_Language	= 0,
-	LanguageIndex_Country
-};
-
 //-----------------------------------------------------------------------------
 // <Language::RequestState>
 // Request current state from the device
@@ -86,7 +80,7 @@ bool Language::RequestValue
 		// This command class doesn't work with multiple instances
 		return false;
 	}
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "LanguageCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->Append( GetNodeId() );
@@ -130,12 +124,12 @@ bool Language::HandleMsg
 		Log::Write( LogLevel_Info, GetNodeId(), "Received Language report: Language=%s, Country=%s", language, country );
 		ClearStaticRequest( StaticRequest_Values );
 
-		if( ValueString* languageValue = static_cast<ValueString*>( GetValue( _instance, LanguageIndex_Language ) ) )
+		if( ValueString* languageValue = static_cast<ValueString*>( GetValue( _instance, ValueID_Index_Language::Language ) ) )
 		{
 			languageValue->OnValueRefreshed( language );
 			languageValue->Release();
 		}
-		if( ValueString* countryValue = static_cast<ValueString*>( GetValue( _instance, LanguageIndex_Country ) ) )
+		if( ValueString* countryValue = static_cast<ValueString*>( GetValue( _instance, ValueID_Index_Language::Country ) ) )
 		{
 			countryValue->OnValueRefreshed( country );
 			countryValue->Release();
@@ -157,8 +151,8 @@ void Language::CreateVars
 {
 	if( Node* node = GetNodeUnsafe() )
 	{
-	  	node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, (uint8)LanguageIndex_Language, "Language", "", false, false, "", 0 );
-		node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, (uint8)LanguageIndex_Country, "Country", "", false, false, "", 0 );
+	  	node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_Language::Language, "Language", "", false, false, "", 0 );
+		node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_Language::Country, "Country", "", false, false, "", 0 );
 	}
 }
 

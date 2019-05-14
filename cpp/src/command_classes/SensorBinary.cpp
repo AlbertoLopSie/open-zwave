@@ -134,7 +134,7 @@ bool SensorBinary::RequestValue
 	Driver::MsgQueue const _queue
 )
 {
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "SensorBinaryCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->SetInstance( this, _instance );
@@ -182,7 +182,7 @@ bool SensorBinary::HandleMsg
 	    {
             Log::Write( LogLevel_Info, GetNodeId(), "Received SensorBinary report: State=%s", _data[1] ? "On" : "Off" );
 
-            if( ValueBool* value = static_cast<ValueBool*>( GetValue( _instance, 0 ) ) )
+            if( ValueBool* value = static_cast<ValueBool*>( GetValue( _instance, ValueID_Index_SensorBinary::Sensor ) ) )
             {
                 value->OnValueRefreshed( _data[1] != 0 );
                 value->Release();
@@ -238,6 +238,6 @@ void SensorBinary::CreateVars
 {
 	if( Node* node = GetNodeUnsafe() )
 	{
-	  	node->CreateValueBool(  ValueID::ValueGenre_User, GetCommandClassId(), _instance, 0, "Sensor", "", true, false, false, 0 );
+	  	node->CreateValueBool(  ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_SensorBinary::Sensor, "Sensor", "", true, false, false, 0 );
 	}
 }

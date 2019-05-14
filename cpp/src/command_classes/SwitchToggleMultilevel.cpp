@@ -78,7 +78,7 @@ bool SwitchToggleMultilevel::RequestValue
 	Driver::MsgQueue const _queue
 )
 {
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "SwitchToggleMultilevelCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->SetInstance( this, _instance );
@@ -110,7 +110,7 @@ bool SwitchToggleMultilevel::HandleMsg
 	{
 		Log::Write( LogLevel_Info, GetNodeId(), "Received SwitchToggleMultiLevel report: level=%d", _data[1] );
 
-		if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, 0 ) ) )
+		if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_SwitchToggleMultilevel::Level ) ) )
 		{
 			value->OnValueRefreshed( _data[1] );
 			value->Release();
@@ -195,7 +195,7 @@ void SwitchToggleMultilevel::CreateVars
 {
 	if( Node* node = GetNodeUnsafe() )
 	{
-	  	node->CreateValueByte( ValueID::ValueGenre_User, GetCommandClassId(), _instance, 0, "Level", "", false, false, 0, 0 );
+	  	node->CreateValueByte( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_SwitchToggleMultilevel::Level, "Level", "", false, false, 0, 0 );
 	}
 }
 

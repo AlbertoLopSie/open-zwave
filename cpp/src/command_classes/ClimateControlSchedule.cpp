@@ -52,12 +52,6 @@ enum ClimateControlScheduleCmd
 	ClimateControlScheduleCmd_OverrideReport
 };
 
-enum
-{
-	ClimateControlScheduleIndex_OverrideState = 8,
-	ClimateControlScheduleIndex_OverrideSetback = 9
-};
-
 static char const* c_dayNames[] =
 {
 	"Invalid",
@@ -77,40 +71,18 @@ static char const* c_overrideStateNames[] =
 	"Permanent",
 	"Invalid"
 };
-
-
 //-----------------------------------------------------------------------------
-// <ClimateControlSchedule::ReadXML>
-// Read the saved change-counter value
+// <ClimateControlSchedule::ClimateControlSchedule>
+// Constructor
 //-----------------------------------------------------------------------------
-void ClimateControlSchedule::ReadXML
+ClimateControlSchedule::ClimateControlSchedule
 (
-	TiXmlElement const* _ccElement
-)
+		uint32 const _homeId,
+		uint8 const _nodeId
+):
+CommandClass( _homeId, _nodeId )
 {
-	CommandClass::ReadXML( _ccElement );
-
-	int intVal;
-	if( TIXML_SUCCESS == _ccElement->QueryIntAttribute( "change_counter", &intVal ) )
-	{
-		m_changeCounter = (uint8)intVal;
-	}
-}
-
-//-----------------------------------------------------------------------------
-// <ClimateControlSchedule::WriteXML>
-// Write the change-counter value
-//-----------------------------------------------------------------------------
-void ClimateControlSchedule::WriteXML
-(
-	TiXmlElement* _ccElement
-)
-{
-	CommandClass::WriteXML( _ccElement );
-
-	char str[8];
-	snprintf( str, 8, "%d", m_changeCounter );
-	_ccElement->SetAttribute( "change_counter", str );
+	m_dom.EnableFlag(STATE_FLAG_CCS_CHANGECOUNTER, 0);
 }
 
 //-----------------------------------------------------------------------------
@@ -233,9 +205,9 @@ bool ClimateControlSchedule::HandleMsg
 
 		if( _data[1] )
 		{
-			if( _data[1] != m_changeCounter )
+			if( _data[1] != m_dom.GetFlagByte(STATE_FLAG_CCS_CHANGECOUNTER) )
 			{
-				m_changeCounter = _data[1];
+				m_dom.SetFlagByte(STATE_FLAG_CCS_CHANGECOUNTER, _data[1]);
 
 				// The schedule has changed and is not in override mode, so request reports for each day
 				for( int i=1; i<=7; ++i )
@@ -279,7 +251,7 @@ bool ClimateControlSchedule::HandleMsg
 		Log::Write( LogLevel_Info, GetNodeId(), "Received climate control schedule override report:" );
 		Log::Write( LogLevel_Info, GetNodeId(), "  Override State: %s:", c_overrideStateNames[overrideState] );
 
-		if( ValueList* valueList = static_cast<ValueList*>( GetValue( _instance, ClimateControlScheduleIndex_OverrideState ) ) )
+		if( ValueList* valueList = static_cast<ValueList*>( GetValue( _instance, ValueID_Index_ClimateControlSchedule::OverrideState ) ) )
 		{
 			valueList->OnValueRefreshed( (int)overrideState );
 			valueList->Release();
@@ -302,7 +274,7 @@ bool ClimateControlSchedule::HandleMsg
 			}
 		}
 
-		if( ValueByte* valueByte = static_cast<ValueByte*>( GetValue( _instance, ClimateControlScheduleIndex_OverrideSetback ) ) )
+		if( ValueByte* valueByte = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_ClimateControlSchedule::OverrideSetback ) ) )
 		{
 			valueByte->OnValueRefreshed( setback );
 			valueByte->Release();
@@ -324,8 +296,8 @@ bool ClimateControlSchedule::SetValue
 )
 {
 //	bool res = false;
-	uint8 instance = _value.GetID().GetInstance();
-	uint8 idx = _value.GetID().GetIndex();
+	uint8_t instance = _value.GetID().GetInstance();
+	uint8_t idx = (uint8_t)(_value.GetID().GetIndex() & 0xFF);
 
 	if( idx < 8 )
 	{
@@ -342,10 +314,10 @@ bool ClimateControlSchedule::SetValue
 		msg->Append( ClimateControlScheduleCmd_Set );
 		msg->Append( idx );	// Day of week
 
-		for( uint8 i=0; i<9; ++i )
+		for( uint8_t i=0; i<9; ++i )
 		{
-			uint8 hours;
-			uint8 minutes;
+			uint8_t hours;
+			uint8_t minutes;
 			int8 setback;
 			if( value->GetSwitchPoint( i, &hours, &minutes, &setback ) )
 			{
@@ -368,8 +340,8 @@ bool ClimateControlSchedule::SetValue
 	else
 	{
 		// Set an override
-		ValueList* state = static_cast<ValueList*>( GetValue( instance, ClimateControlScheduleIndex_OverrideState ) );
-		ValueByte* setback = static_cast<ValueByte*>( GetValue( instance, ClimateControlScheduleIndex_OverrideSetback ) );
+		ValueList* state = static_cast<ValueList*>( GetValue( instance, ValueID_Index_ClimateControlSchedule::OverrideState ) );
+		ValueByte* setback = static_cast<ValueByte*>( GetValue( instance, ValueID_Index_ClimateControlSchedule::OverrideSetback ) );
 
 		if( state && setback )
 		{
@@ -422,8 +394,8 @@ void ClimateControlSchedule::CreateVars
 			items.push_back( item );
 		}
 
-		node->CreateValueList(  ValueID::ValueGenre_User, GetCommandClassId(), _instance, ClimateControlScheduleIndex_OverrideState, "Override State", "", false, false, 1, items, 0, 0 );
-		node->CreateValueByte( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ClimateControlScheduleIndex_OverrideSetback, "Override Setback", "", false, false, 0, 0  );
+		node->CreateValueList(  ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_ClimateControlSchedule::OverrideState, "Override State", "", false, false, 1, items, 0, 0 );
+		node->CreateValueByte( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_ClimateControlSchedule::OverrideSetback, "Override Setback", "", false, false, 0, 0  );
 	}
 }
 

@@ -182,12 +182,13 @@ void ThermostatMode::WriteXML
 	TiXmlElement* _ccElement
 )
 {
+	CommandClass::WriteXML( _ccElement );
+
 	if( m_supportedModes.empty() )
 	{
 		return;
 	}
 
-	CommandClass::WriteXML( _ccElement );
 
 	if( GetNodeUnsafe() )
 	{
@@ -264,7 +265,7 @@ bool ThermostatMode::RequestValue
 
 	if( _getTypeEnum == 0 )		// get current mode
 	{
-		if ( IsGetSupported() )
+		if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 		{
 			// Request the current mode
 			Msg* msg = new Msg( "ThermostatModeCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
@@ -311,7 +312,7 @@ bool ThermostatMode::HandleMsg
 		if( validMode )
 		{
 			// We have received the thermostat mode from the Z-Wave device
-			if( ValueList* valueList = static_cast<ValueList*>( GetValue( _instance, 0 ) ) )
+			if( ValueList* valueList = static_cast<ValueList*>( GetValue( _instance, ValueID_Index_ThermostatMode::Mode ) ) )
 			{
 				valueList->OnValueRefreshed( mode );
 				if (valueList->GetItem())
@@ -388,6 +389,7 @@ bool ThermostatMode::SetValue
 		uint8 state = (uint8)value->GetItem()->m_value;
 
 		Msg* msg = new Msg( "ThermostatModeCmd_Set", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true );
+		msg->SetInstance( this, _value.GetID().GetInstance() );
 		msg->Append( GetNodeId() );
 		msg->Append( 3 );
 		msg->Append( GetCommandClassId() );
@@ -449,6 +451,6 @@ void ThermostatMode::CreateVars
 			}
 		}
 
-		node->CreateValueList( ValueID::ValueGenre_User, GetCommandClassId(), _instance, 0, "Mode", "", false, false, 1, m_supportedModes, defaultValue, 0 );
+		node->CreateValueList( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_ThermostatMode::Mode, "Mode", "", false, false, 1, m_supportedModes, defaultValue, 0 );
 	}
 }

@@ -192,16 +192,17 @@ namespace OpenZWave
 	/*@{*/
 	public:
 		/**
-		 * \brief Saves the configuration of a PC Controller's Z-Wave network to the application's user data folder.
+		 * \brief Saves a cache of a PC Controller's Z-Wave network to the application's user data folder.
 		 * This method does not normally need to be called, since OpenZWave will save the state automatically
 		 * during the shutdown process.  It is provided here only as an aid to development.
 		 * The configuration of each PC Controller's Z-Wave network is stored in a separate file.  The filename
-		 * consists of the 8 digit hexadecimal version of the controller's Home ID, prefixed with the string 'zwcfg_'.
+		 * consists of the 8 digit hexadecimal version of the controller's Home ID, prefixed with the string 'ozwcache_'.
 		 * This convention allows OpenZWave to find the correct configuration file for a controller, even if it is
 		 * attached to a different serial port, USB device path, etc.
+		 * \deprecated OZW handles writing out the cache automatically. This does not need to be called anymore.
 		 * \param _homeId The Home ID of the Z-Wave controller to save.
 		 */
-		void WriteConfig( uint32 const _homeId );
+		DEPRECATED void WriteConfig( uint32 const _homeId );
 
 		/**
 		 * \brief Gets a pointer to the locked Options object.
@@ -295,6 +296,15 @@ namespace OpenZWave
 		 * \return true if it is a bridge controller, false if not.
 		 */
 		bool IsBridgeController( uint32 const _homeId );
+
+		/**
+		 * \brief Query if the controller support "extended status information"
+		 * On IMA enabled targets build on SDK >= 6.60.00
+		 * ZW_SendData can return information about TX time, route tries and more.
+		 * \param _homeId The Home ID of the Z-Wave controller.
+		 * \return true if the controller accepted to turn on extended status.
+		 */
+		bool HasExtendedTxStatus( uint32 const _homeId );
 
 		/**
 		 * \brief Get the version of the Z-Wave API library used by a controller.
@@ -880,6 +890,40 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 
 	/*@}*/
 
+	//-----------------------------------------------------------------------------
+	// Instances
+	//-----------------------------------------------------------------------------
+	/** \name Instances
+	 *  Methods for accessing Instance Information.
+	 */
+	/*@{*/
+	public:
+		/**
+		 *\brief Get the Instance Label for a specific ValueID
+		 * returns the Instance Label for a Specific ValueID on a CommandClass, or the Global Instance Label
+		 * if there is no specific label for the CommandClass
+		 *\param _id The unique identifier of the value
+		 *\return The Instance Label
+ 		 * \throws OZWException with Type OZWException::OZWEXCEPTION_INVALID_VALUEID if the ValueID is invalid
+		 * \throws OZWException with Type OZWException::OZWEXCEPTION_INVALID_HOMEID if the Driver cannot be found
+		 */
+		string GetInstanceLabel( ValueID const &_id);
+
+		/**
+		 *\brief Get the Instance Label for a specific CommandClass
+		 * returns the Label for a Specific Instance on a Specific CommandClass, or the Global Instance Label
+		 * if there is no specific label for the CommandClass
+		 *\param _homeId the HomeID for the network you are querying
+		 *\param _node The Node you are interested in.
+		 *\param _cc The CommandClass for the Label you are interested in
+		 *\param _instance the Instance you are querying for
+		 *\return The Instance Label
+ 		 * \throws OZWException with Type OZWException::OZWEXCEPTION_INVALID_VALUEID if the ValueID is invalid
+		 * \throws OZWException with Type OZWException::OZWEXCEPTION_INVALID_HOMEID if the Driver cannot be found
+		 */
+		string GetInstanceLabel(uint32 const _homeId, uint8 const _node, uint8 const _cc, uint8 const _instance);
+
+	/*@}*/
 	//-----------------------------------------------------------------------------
 	// Values
 	//-----------------------------------------------------------------------------
@@ -2103,6 +2147,25 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 		 */
 		bool DeleteButton(uint32 const _homeId, uint8 const _nodeId, uint8 const _buttonid);
 
+		/**
+		*  \brief Send a raw packet to a node.
+		*
+		*  Send a Raw Packet to a Node. No confirmation that the node accepted the packet etc will be available.
+		*  This is for testing only and should not be used for anything production
+		*
+		*  \param _homeId the HomeID of the Z-Wave Network
+		*  \param _nodeId the ID of the Node
+		*  \param _logText Text to Log when sending the packet
+		*  \param _msgType The Type of Message to Send
+		*  \param _sendSecure if we should attempt to encrypt the packet
+		*  \param _content A array of bytes to send
+		*  \param _length the length of the array
+		*/
+		void SendRawData(uint32 const _homeId, uint8 const _nodeId, string const& _logText, uint8 const _msgType, const bool _sendSecure, uint8 const* _content, uint8 const _length);
+
+
+
+
 	/*@}*/
 
 	//-----------------------------------------------------------------------------
@@ -2503,6 +2566,20 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 		 */
 		void GetNodeStatistics( uint32 const _homeId, uint8 const _nodeId, Node::NodeData* _data );
 
+		/**
+		 * \brief Get a Human Readable String for the RouteScheme in the Extended TX Status Frame
+		 * \param _data Pointer to the structure Node::NodeData return from GetNodeStatistics
+		 * \return String containing the Route Scheme Used
+		 */
+		static string GetNodeRouteScheme(Node::NodeData *_data);
+
+		/**
+		 * \brief Get Humand Readable String for the RouteSpeed in the Extended TX Status Frame
+		 * \param _data Pointer to the structure Node::NodeData returned from GetNodeStatistics
+		 * \return String containing the Speed
+		 */
+		static string GetNodeRouteSpeed(Node::NodeData *_data);
+
 	/*@}*/
 
 	//-----------------------------------------------------------------------------
@@ -2520,7 +2597,15 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 		 * \param _metadata the MetadataFields you are requesting.
 		 * \return a string containing the requested metadata
 		 */
-		string GetMetaData( uint32 const _homeId, uint8 const _nodeId, Node::MetaDataFields _metadata );
+		string const GetMetaData( uint32 const _homeId, uint8 const _nodeId, Node::MetaDataFields _metadata );
+		/**
+		 * \brief Retrieve ChangeLogs about a configuration revision
+		 * \param _homeId The Home ID of the driver for the node
+		 * \param _nodeId The node number
+		 * \param revision the revision you are requesting
+		 * \return a Node::ChangeLogEntry struct with the ChangeLog Details. if the revision paramater is -1, then then revision passed to this function is invalid
+		 */
+		Node::ChangeLogEntry const GetChangeLog( uint32 const _homeId, uint8 const _nodeId, uint32_t revision);
 
 	/*@}*/
 		//-----------------------------------------------------------------------------

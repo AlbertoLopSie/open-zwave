@@ -31,6 +31,7 @@
 #include <list>
 #include "command_classes/CommandClass.h"
 #include "Driver.h"
+#include "TimerThread.h"
 
 namespace OpenZWave
 {
@@ -41,7 +42,7 @@ namespace OpenZWave
 	/** \brief Implements COMMAND_CLASS_WAKE_UP (0x84), a Z-Wave device command class.
 	 * \ingroup CommandClass
 	 */
-	class WakeUp: public CommandClass
+	class WakeUp: public CommandClass, private Timer
 	{
 	public:
 		static CommandClass* Create( uint32 const _homeId, uint8 const _nodeId ){ return new WakeUp( _homeId, _nodeId ); }
@@ -52,7 +53,13 @@ namespace OpenZWave
 
 		void Init();	// Starts the process of requesting node state from a sleeping device.
 		void QueueMsg( Driver::MsgQueueItem const& _item );
+
+		/** \brief Send all pending messages followed by a no more information message. */
 		void SendPending();
+
+		/** \brief Send a no more information message. */
+		void SendNoMoreInfo(uint32 id);
+
 		bool IsAwake()const{ return m_awake; }
 		void SetAwake( bool _state );
 		void SetPollRequired(){ m_pollRequired = true; }

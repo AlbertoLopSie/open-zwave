@@ -34,9 +34,12 @@
 #include "Node.h"
 #include "Notification.h"
 #include "Options.h"
+#include "TimerThread.h"
 #include "platform/Log.h"
 #include "platform/Mutex.h"
 #include "value_classes/ValueInt.h"
+
+#include "tinyxml.h"
 
 using namespace OpenZWave;
 
@@ -66,8 +69,9 @@ m_mutex( new Mutex() ),
 m_awake( true ),
 m_pollRequired( false )
 {
+	Timer::SetDriver(GetDriver());
 	Options::Get()->GetOptionAsBool("AssumeAwake", &m_awake);
-
+	m_com.EnableFlag(COMPAT_FLAG_WAKEUP_DELAYNMI, 0);
 	SetStaticRequest( StaticRequest_Values );
 }
 
@@ -202,7 +206,7 @@ bool WakeUp::HandleMsg
 {
 	if( WakeUpCmd_IntervalReport == (WakeUpCmd)_data[0] )
 	{
-		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, 0 ) ) )
+		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, ValueID_Index_WakeUp::Interval ) ) )
 		{
 			// some interval reports received are validly formatted (proper checksum, etc.) but only have length
 			// of 3 (0x84 (classid), 0x06 (IntervalReport), 0x00).  Not sure what this means
@@ -250,22 +254,22 @@ bool WakeUp::HandleMsg
 		uint32 definterval = (((uint32)_data[7]) << 16) | (((uint32)_data[8]) << 8) | ((uint32)_data[9]);
 		uint32 stepinterval = (((uint32)_data[10]) << 16) | (((uint32)_data[11]) << 8) | ((uint32)_data[12]);
 		Log::Write( LogLevel_Info, GetNodeId(), "Received Wakeup Interval Capability report from node %d: Min Interval=%d, Max Interval=%d, Default Interval=%d, Interval Step=%d", GetNodeId(), mininterval, maxinterval, definterval, stepinterval );
-		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, 1 ) ) )
+		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, ValueID_Index_WakeUp::Min_Interval ) ) )
 		{
 			value->OnValueRefreshed( (int32)mininterval );
 			value->Release();
 		}
-		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, 2 ) ) )
+		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, ValueID_Index_WakeUp::Max_Interval ) ) )
 		{
 			value->OnValueRefreshed( (int32)maxinterval );
 			value->Release();
 		}
-		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, 3 ) ) )
+		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, ValueID_Index_WakeUp::Default_Interval ) ) )
 		{
 			value->OnValueRefreshed( (int32)definterval );
 			value->Release();
 		}
-		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, 4 ) ) )
+		if( ValueInt* value = static_cast<ValueInt*>( GetValue( _instance, ValueID_Index_WakeUp::Interval_Step ) ) )
 		{
 			value->OnValueRefreshed( (int32)stepinterval );
 			value->Release();
@@ -342,6 +346,15 @@ void WakeUp::SetAwake
 {
 	if( m_awake != _state )
 	{
+		/* we do the call on RefreshValuesOnWakeup here, so any duplicates in the wakeup Queue are handled appropriately
+		 *
+		 */
+		if ( m_awake == false ) {
+			Node* node = GetNodeUnsafe();
+			if (node)
+				node->RefreshValuesOnWakeup();
+		}
+
 		m_awake = _state;
 		Log::Write( LogLevel_Info, GetNodeId(), "  Node %d has been marked as %s", GetNodeId(), m_awake ? "awake" : "asleep" );
 		Notification* notification = new Notification( Notification::Type_Notification );
@@ -363,9 +376,10 @@ void WakeUp::SetAwake
 			}
 			m_pollRequired = false;
 		}
-
 		// Send all pending messages
 		SendPending();
+
+
 	}
 }
 
@@ -457,7 +471,6 @@ void WakeUp::SendPending
 	Node* node = GetNodeUnsafe();
 	if( node != NULL )
 	{
-
 		if( !node->AllQueriesCompleted() )
 		{
 			sendToSleep = false;
@@ -465,16 +478,35 @@ void WakeUp::SendPending
 	}
 
 	/* if we are reloading, the QueryStage_Complete will take care of sending the device back to sleep */
-	if( sendToSleep && !reloading)
+	if( sendToSleep && !reloading )
 	{
-		Msg* msg = new Msg( "WakeUpCmd_NoMoreInformation", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true );
-		msg->Append( GetNodeId() );
-		msg->Append( 2 );
-		msg->Append( GetCommandClassId() );
-		msg->Append( WakeUpCmd_NoMoreInformation );
-		msg->Append( GetDriver()->GetTransmitOptions() );
-		GetDriver()->SendMsg( msg, Driver::MsgQueue_WakeUp );
+		if( m_com.GetFlagInt(COMPAT_FLAG_WAKEUP_DELAYNMI) == 0 ) {
+			SendNoMoreInfo(1);
+
+		} else {
+			Log::Write( LogLevel_Info, GetNodeId(), "  Node %d has delayed sleep of %dms", GetNodeId(), m_com.GetFlagInt(COMPAT_FLAG_WAKEUP_DELAYNMI) );
+			TimerThread::TimerCallback callback = bind(&WakeUp::SendNoMoreInfo, this, 1);
+			TimerSetEvent(m_com.GetFlagInt(COMPAT_FLAG_WAKEUP_DELAYNMI), callback, 1);
+		}
 	}
+}
+
+//-----------------------------------------------------------------------------
+// <WakeUp::SendNoMoreInfo>
+// Send a no more information message
+//-----------------------------------------------------------------------------
+void WakeUp::SendNoMoreInfo
+(
+		uint32 id
+)
+{
+	Msg* msg = new Msg( "WakeUpCmd_NoMoreInformation", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true );
+	msg->Append( GetNodeId() );
+	msg->Append( 2 );
+	msg->Append( GetCommandClassId() );
+	msg->Append( WakeUpCmd_NoMoreInformation );
+	msg->Append( GetDriver()->GetTransmitOptions() );
+	GetDriver()->SendMsg( msg, Driver::MsgQueue_WakeUp );
 }
 
 //-----------------------------------------------------------------------------
@@ -494,15 +526,15 @@ void WakeUp::CreateVars
 			{
 			case 1:
 			{
-				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, 0, "Wake-up Interval", "Seconds", false, false, 3600, 0 );
+				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_WakeUp::Interval, "Wake-up Interval", "Seconds", false, false, 3600, 0 );
 				break;
 			}
 			case 2:
 			{
-				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, 1, "Minimum Wake-up Interval", "Seconds", true, false, 0, 0 );
-				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, 2, "Maximum Wake-up Interval", "Seconds", true, false, 0, 0 );
-				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, 3, "Default Wake-up Interval", "Seconds", true, false, 0, 0 );
-				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, 4, "Wake-up Interval Step", "Seconds", true, false, 0, 0 );
+				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_WakeUp::Min_Interval, "Minimum Wake-up Interval", "Seconds", true, false, 0, 0 );
+				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_WakeUp::Max_Interval, "Maximum Wake-up Interval", "Seconds", true, false, 0, 0 );
+				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_WakeUp::Default_Interval, "Default Wake-up Interval", "Seconds", true, false, 0, 0 );
+				node->CreateValueInt( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_WakeUp::Interval_Step, "Wake-up Interval Step", "Seconds", true, false, 0, 0 );
 				break;
 			}
 			}

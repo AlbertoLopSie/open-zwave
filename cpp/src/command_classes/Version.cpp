@@ -47,13 +47,6 @@ enum VersionCmd
 	VersionCmd_CommandClassReport			= 0x14
 };
 
-enum
-{
-	VersionIndex_Library = 0,
-	VersionIndex_Protocol,
-	VersionIndex_Application
-};
-
 //-----------------------------------------------------------------------------
 // <Version::Version>
 // Constructor
@@ -63,45 +56,10 @@ Version::Version
 	uint32 const _homeId,
 	uint8 const _nodeId
 ):
-	CommandClass( _homeId, _nodeId ),
-	m_classGetSupported( true )
+	CommandClass( _homeId, _nodeId )
 {
+	m_com.EnableFlag(COMPAT_FLAG_VERSION_GETCLASSVERSION, true);
 	SetStaticRequest( StaticRequest_Values );
-}
-
-//-----------------------------------------------------------------------------
-// <Version::ReadXML>
-// Read configuration.
-//-----------------------------------------------------------------------------
-void Version::ReadXML
-(
-	TiXmlElement const* _ccElement
-)
-{
-	CommandClass::ReadXML( _ccElement );
-
-	char const* str = _ccElement->Attribute("classgetsupported");
-	if( str )
-	{
-		m_classGetSupported = !strcmp( str, "true");
-	}
-}
-
-//-----------------------------------------------------------------------------
-// <Version::WriteXML>
-// Save changed configuration
-//-----------------------------------------------------------------------------
-void Version::WriteXML
-(
-	TiXmlElement* _ccElement
-)
-{
-	CommandClass::WriteXML( _ccElement );
-
-	if( !m_classGetSupported )
-	{
-		_ccElement->SetAttribute( "classgetsupported", "false" );
-	}
 }
 
 //-----------------------------------------------------------------------------
@@ -140,7 +98,7 @@ bool Version::RequestValue
 		// This command class doesn't work with multiple instances
 		return false;
 	}
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "VersionCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->Append( GetNodeId() );
@@ -182,17 +140,17 @@ bool Version::HandleMsg
 			Log::Write( LogLevel_Info, GetNodeId(), "Received Version report from node %d: Library=%s, Protocol=%s, Application=%s", GetNodeId(), library, protocol, application );
 			ClearStaticRequest( StaticRequest_Values );
 
-			if( ValueString* libraryValue = static_cast<ValueString*>( GetValue( _instance, VersionIndex_Library ) ) )
+			if( ValueString* libraryValue = static_cast<ValueString*>( GetValue( _instance, ValueID_Index_Version::Library ) ) )
 			{
 				libraryValue->OnValueRefreshed( library );
 				libraryValue->Release();
 			}
-			if( ValueString* protocolValue = static_cast<ValueString*>( GetValue( _instance, VersionIndex_Protocol ) ) )
+			if( ValueString* protocolValue = static_cast<ValueString*>( GetValue( _instance, ValueID_Index_Version::Protocol ) ) )
 			{
 				protocolValue->OnValueRefreshed( protocol );
 				protocolValue->Release();
 			}
-			if( ValueString* applicationValue = static_cast<ValueString*>( GetValue( _instance, VersionIndex_Application ) ) )
+			if( ValueString* applicationValue = static_cast<ValueString*>( GetValue( _instance, ValueID_Index_Version::Application ) ) )
 			{
 				applicationValue->OnValueRefreshed( application );
 				applicationValue->Release();
@@ -226,7 +184,7 @@ bool Version::RequestCommandClassVersion
 	CommandClass const* _commandClass
 )
 {
-	if( m_classGetSupported )
+	if( m_com.GetFlagBool(COMPAT_FLAG_VERSION_GETCLASSVERSION) )
 	{
 		if( _commandClass->HasStaticRequest( StaticRequest_Version ) )
 		{
@@ -256,8 +214,8 @@ void Version::CreateVars
 {
 	if( Node* node = GetNodeUnsafe() )
 	{
-	  	node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, VersionIndex_Library, "Library Version", "", true, false, "Unknown", 0 );
-		node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, VersionIndex_Protocol, "Protocol Version", "", true, false, "Unknown", 0 );
-		node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, VersionIndex_Application, "Application Version", "", true, false, "Unknown", 0 );
+	  	node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_Version::Library, "Library Version", "", true, false, "Unknown", 0 );
+		node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_Version::Protocol, "Protocol Version", "", true, false, "Unknown", 0 );
+		node->CreateValueString( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_Version::Application, "Application Version", "", true, false, "Unknown", 0 );
 	}
 }

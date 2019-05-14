@@ -123,12 +123,6 @@ static char const* c_DoorLockEventType[] =
 };
 /* size = 31 entries */
 
-enum ValueIDSystemIndexes
-{
-	Value_System_Config_MaxRecords		= 0x00,		/* Max Number of Records the Device can Hold */
-	Value_GetRecordNo					= 0x01,		/* Current Record Number after refresh */
-	Value_LogRecord						= 0x02		/* Simple String Representation of the Log Record - Tab Delimited Fields */
-};
 
 
 
@@ -142,47 +136,11 @@ DoorLockLogging::DoorLockLogging
 	uint8 const _nodeId
 ):
 	CommandClass( _homeId, _nodeId ),
-	m_MaxRecords(0),
 	m_CurRecord(0)
 {
+	m_dom.EnableFlag(STATE_FLAG_DOORLOCKLOG_MAXRECORDS, 0);
 	SetStaticRequest( StaticRequest_Values );
 }
-
-//-----------------------------------------------------------------------------
-// <UserCode::ReadXML>
-// Class specific configuration
-//-----------------------------------------------------------------------------
-void DoorLockLogging::ReadXML
-(
-	TiXmlElement const* _ccElement
-)
-{
-	int32 intVal;
-
-	CommandClass::ReadXML( _ccElement );
-	if( TIXML_SUCCESS == _ccElement->QueryIntAttribute( "m_MaxRecords", &intVal ) )
-	{
-		m_MaxRecords = intVal;
-	}
-}
-
-//-----------------------------------------------------------------------------
-// <UserCode::WriteXML>
-// Class specific configuration
-//-----------------------------------------------------------------------------
-void DoorLockLogging::WriteXML
-(
-	TiXmlElement* _ccElement
-)
-{
-	char str[32];
-
-	CommandClass::WriteXML( _ccElement );
-	snprintf( str, sizeof(str), "%d", m_MaxRecords );
-	_ccElement->SetAttribute( "m_MaxRecords", str);
-}
-
-
 
 //-----------------------------------------------------------------------------
 // <DoorLockLogging::RequestState>
@@ -266,11 +224,11 @@ bool DoorLockLogging::HandleMsg
 	if( DoorLockLoggingCmd_RecordSupported_Report == (DoorLockLoggingCmd)_data[0] )
 	{
 		Log::Write( LogLevel_Info, GetNodeId(), "Received DoorLockLoggingCmd_RecordSupported_Report: Max Records is %d ", _data[1]);
-		m_MaxRecords = _data[1];
-		if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, Value_System_Config_MaxRecords ) ) )
+		m_dom.SetFlagByte(STATE_FLAG_DOORLOCKLOG_MAXRECORDS, _data[1]);
+		if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_DoorLockLogging::System_Config_MaxRecords ) ) )
 		{
 
-			value->OnValueRefreshed( m_MaxRecords );
+			value->OnValueRefreshed( _data[1] );
 			value->Release();
 		}
 		ClearStaticRequest( StaticRequest_Values );
@@ -283,12 +241,12 @@ bool DoorLockLogging::HandleMsg
 
 		Log::Write (LogLevel_Info, GetNodeId(), "Received a DoorLockLogging Record %d which is \"%s\"", _data[1], c_DoorLockEventType[EventType-1]);
 
-		if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, Value_GetRecordNo ) ) )
+		if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_DoorLockLogging::GetRecordNo ) ) )
 		{
 			value->OnValueRefreshed( _data[1]);
 			value->Release();
 		}
-		if( ValueString* value = static_cast<ValueString*>( GetValue( _instance, Value_LogRecord ) ) )
+		if( ValueString* value = static_cast<ValueString*>( GetValue( _instance, ValueID_Index_DoorLockLogging::LogRecord ) ) )
 		{
 			char msg[512];
 			uint16 year = (_data[2] << 8) + (_data[3] & 0xFF);
@@ -304,13 +262,13 @@ bool DoorLockLogging::HandleMsg
 			}
 			uint8 userid = (_data[10]);
 			uint8 usercodelength = (_data[11]);
-			char usercode[254], tmpusercode[254];
+			char usercode[254], tmpusercode[10];
 			snprintf(usercode, sizeof(usercode), "UserCode:");
 			if (usercodelength > 0)
 				for (int i = 0; i < usercodelength; i++ )
 				{
-					strncpy(tmpusercode, usercode, sizeof(tmpusercode));
-                                        snprintf(usercode, sizeof(usercode), "%s %d", tmpusercode, (int)_data[12+i]);
+					snprintf(tmpusercode, sizeof(tmpusercode), "%d", (int)_data[12+i]);
+					strncat(usercode, tmpusercode, 10);
 				}
 
 			if (valid) {
@@ -335,7 +293,7 @@ bool DoorLockLogging::SetValue
 	Value const& _value
 )
 {
-	if( (Value_GetRecordNo == _value.GetID().GetIndex()) && ValueID::ValueType_Byte == _value.GetID().GetType() )
+	if( (ValueID_Index_DoorLockLogging::GetRecordNo == _value.GetID().GetIndex()) && ValueID::ValueType_Byte == _value.GetID().GetType() )
 	{
 		ValueByte const* value = static_cast<ValueByte const*>(&_value);
 
@@ -368,9 +326,9 @@ void DoorLockLogging::CreateVars
 {
 	if( Node* node = GetNodeUnsafe() )
 	{
-  		node->CreateValueByte( ValueID::ValueGenre_System, GetCommandClassId(), _instance, Value_System_Config_MaxRecords, "Max Number of Records", "", true, false, 0x0, 0 );
-  		node->CreateValueByte( ValueID::ValueGenre_User, GetCommandClassId(), _instance, Value_GetRecordNo, "Current Record Number", "", false, false, 0x0, 0 );
-  		node->CreateValueString( ValueID::ValueGenre_User, GetCommandClassId(), _instance, Value_LogRecord, "Log Record", "", true, false, "", 0 );
+  		node->CreateValueByte( ValueID::ValueGenre_System, GetCommandClassId(), _instance, ValueID_Index_DoorLockLogging::System_Config_MaxRecords, "Max Number of Records", "", true, false, 0x0, 0 );
+  		node->CreateValueByte( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_DoorLockLogging::GetRecordNo, "Current Record Number", "", false, false, 0x0, 0 );
+  		node->CreateValueString( ValueID::ValueGenre_User, GetCommandClassId(), _instance, ValueID_Index_DoorLockLogging::LogRecord, "Log Record", "", true, false, "", 0 );
 	}
 }
 

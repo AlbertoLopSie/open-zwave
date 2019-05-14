@@ -55,6 +55,7 @@ namespace OpenZWave
 		friend class NoOperation;
 		friend class SceneActivation;
 		friend class WakeUp;
+		friend class ApplicationStatus;
 		friend class ManufacturerSpecificDB;
 		/* allow us to Stream a Notification */
 		//friend std::ostream &operator<<(std::ostream &os, const Notification &dt);
@@ -83,7 +84,7 @@ namespace OpenZWave
 			Type_NodeEvent,						/**< A node has triggered an event.  This is commonly caused when a node sends a Basic_Set command to the controller.  The event value is stored in the notification. */
 			Type_PollingDisabled,				/**< Polling of a node has been successfully turned off by a call to Manager::DisablePoll */
 			Type_PollingEnabled,				/**< Polling of a node has been successfully turned on by a call to Manager::EnablePoll */
-			Type_SceneEvent,					/**< Scene Activation Set received */
+			Type_SceneEvent,					/**< Scene Activation Set received (Depreciated in 1.8) */
 			Type_CreateButton,					/**< Handheld controller button event created */
 			Type_DeleteButton,					/**< Handheld controller button event deleted */
 			Type_ButtonOn,						/**< Handheld controller button on pressed event */
@@ -125,15 +126,18 @@ namespace OpenZWave
 		 * User Alert Types - These are messages that should be displayed to users to inform them of
 		 * potential issues such as Out of Date configuration files etc
 		 */
-		enum UserAlertNofification
+		enum UserAlertNotification
 		{
-			Alert_None,						/**< No Alert Currently Present */
-			Alert_ConfigOutOfDate,			/**< One of the Config Files is out of date. Use GetNodeId to determine which node is affected. */
-			Alert_MFSOutOfDate,				/**< the manufacturer_specific.xml file is out of date. */
-			Alert_ConfigFileDownloadFailed, /**< A Config File failed to download */
-			Alert_DNSError,					/**< A error occurred performing a DNS Lookup */
-			Alert_NodeReloadReqired,		/**< A new Config file has been discovered for this node, and its pending a Reload to Take Effect */
-			Alert_UnsupportedController		/**< The Controller is not running a Firmware Library we support */
+			Alert_None,							/**< No Alert Currently Present */
+			Alert_ConfigOutOfDate,				/**< One of the Config Files is out of date. Use GetNodeId to determine which node is affected. */
+			Alert_MFSOutOfDate,					/**< the manufacturer_specific.xml file is out of date. */
+			Alert_ConfigFileDownloadFailed, 	/**< A Config File failed to download */
+			Alert_DNSError,						/**< A error occurred performing a DNS Lookup */
+			Alert_NodeReloadReqired,			/**< A new Config file has been discovered for this node, and its pending a Reload to Take Effect */
+			Alert_UnsupportedController,		/**< The Controller is not running a Firmware Library we support */
+			Alert_ApplicationStatus_Retry,  	/**< Application Status CC returned a Retry Later Message */
+			Alert_ApplicationStatus_Queued, 	/**< Command Has been Queued for execution later */
+			Alert_ApplicationStatus_Rejected,	/**< Command has been rejected */
 		};
 
 		/**
@@ -182,9 +186,10 @@ namespace OpenZWave
 
 		/**
 		 * Get the scene Id of a notification.  Only valid in Notification::Type_SceneEvent notifications.
+		 * The SceneActivation CC now exposes ValueID's that convey this information
 		 * \return the event value.
 		 */
-		uint8 GetSceneId()const{ assert(Type_SceneEvent==m_type); return m_byte; }
+		DEPRECATED uint8 GetSceneId()const{ assert(Type_SceneEvent==m_type); return m_byte; }
 
 		/**
 		 * Get the notification code from a notification. Only valid for Notification::Type_Notification or Notification::Type_ControllerCommand notifications.
@@ -205,6 +210,12 @@ namespace OpenZWave
 		uint8 GetByte()const{ return m_byte; }
 
 		/**
+		 * Helper function to return the Timeout to wait for. Only valid for Notification::Type_UserAlerts - Notification::Alert_ApplicationStatus_Retry
+		 * \return The time to wait before retrying
+		 */
+		uint8 GetRetry()const{ assert((Type_UserAlerts == m_type) && (Alert_ApplicationStatus_Retry == m_useralerttype)); return m_byte; }
+
+		/**
 		 * Helper Function to return the Notification as a String
 		 * \return A string representation of this Notification
 		 */
@@ -214,7 +225,7 @@ namespace OpenZWave
 		 * Retrieve the User Alert Type Enum to determine what this message is about
 		 * \return UserAlertNotification Enum describing the Alert Type
 		 */
-		UserAlertNofification GetUserAlertType()const {return m_useralerttype;};
+		UserAlertNotification GetUserAlertType()const {return m_useralerttype;};
 
 		/**
 		 * Return the Comport associated with the DriverFailed Message
@@ -234,16 +245,17 @@ namespace OpenZWave
 		void SetSceneId( uint8 const _sceneId ){ assert(Type_SceneEvent==m_type); m_byte = _sceneId; }
 		void SetButtonId( uint8 const _buttonId ){ assert(Type_CreateButton==m_type||Type_DeleteButton==m_type||Type_ButtonOn==m_type||Type_ButtonOff==m_type); m_byte = _buttonId; }
 		void SetNotification( uint8 const _noteId ){ assert((Type_Notification==m_type) || (Type_ControllerCommand == m_type)); m_byte = _noteId; }
-		void SetUserAlertNofification(UserAlertNofification const alerttype){ assert(Type_UserAlerts==m_type); m_useralerttype = alerttype; }
+		void SetUserAlertNotification(UserAlertNotification const alerttype){ assert(Type_UserAlerts==m_type); m_useralerttype = alerttype; }
 		void SetCommand( uint8 const _command ){ assert(Type_ControllerCommand == m_type); m_command = _command; }
 		void SetComPort( string comport) { assert(Type_DriverFailed == m_type); m_comport = comport; }
+		void SetRetry (uint8 const timeout) { assert(Type_UserAlerts == m_type); m_byte = timeout; }
 
 		NotificationType		m_type;
 		ValueID				m_valueId;
 		uint8				m_byte;
 		uint8				m_event;
 		uint8				m_command;
-		UserAlertNofification m_useralerttype;
+		UserAlertNotification m_useralerttype;
 		string				m_comport;
 	};
 

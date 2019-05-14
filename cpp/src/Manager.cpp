@@ -31,11 +31,13 @@
 #include <iomanip>
 
 #include "Defs.h"
+#include "CompatOptionManager.h"
 #include "Manager.h"
 #include "Driver.h"
 #include "Localization.h"
 #include "Node.h"
 #include "Notification.h"
+#include "NotificationCCTypes.h"
 #include "Options.h"
 #include "Scene.h"
 #include "Utils.h"
@@ -49,7 +51,6 @@
 #include "command_classes/WakeUp.h"
 
 #include "value_classes/ValueID.h"
-#include "value_classes/ValueBitSet.h"
 #include "value_classes/ValueBool.h"
 #include "value_classes/ValueButton.h"
 #include "value_classes/ValueByte.h"
@@ -190,8 +191,12 @@ m_notificationMutex( new Mutex() )
 
 	CommandClasses::RegisterCommandClasses();
 	Scene::ReadScenes();
-	Log::Write(LogLevel_Always, "OpenZwave Version %s Starting Up", getVersionAsString().c_str());
+	// petergebruers replace getVersionAsString() with getVersionLongAsString() because
+	// the latter prints more information, based on the status of the repository
+	// when "make" was run. A Makefile gets this info from git describe --long --tags --dirty
+	Log::Write(LogLevel_Always, "OpenZwave Version %s Starting Up", getVersionLongAsString().c_str());
 	Log::Write(LogLevel_Always, "Using Language Localization %s", Localization::Get()->GetSelectedLang().c_str());
+	NotificationCCTypes::Create();
 
 }
 
@@ -207,9 +212,10 @@ Manager::~Manager
 	while( !m_pendingDrivers.empty() )
 	{
 		list<Driver*>::iterator it = m_pendingDrivers.begin();
-		delete *it;
+	        delete *it;
 		m_pendingDrivers.erase( it );
 	}
+	m_pendingDrivers.clear();
 
 	// Clear the ready map
 	while( !m_readyDrivers.empty() )
@@ -218,6 +224,7 @@ Manager::~Manager
 		delete it->second;
 		m_readyDrivers.erase( it );
 	}
+	m_readyDrivers.clear();
 
 	m_notificationMutex->Release();
 
@@ -226,16 +233,51 @@ Manager::~Manager
 	{
 		list<Watcher*>::iterator it = m_watchers.begin();
 		delete *it;
-		m_watchers.erase( it );
+	        m_watchers.erase( it );
 	}
+	m_watchers.clear();
 
 	// Clear the generic device class list
 	while( !Node::s_genericDeviceClasses.empty() )
 	{
-		map<uint8,Node::GenericDeviceClass*>::iterator git = Node::s_genericDeviceClasses.begin();
-		delete git->second;
+	        map<uint8,Node::GenericDeviceClass*>::iterator git = Node::s_genericDeviceClasses.begin();
+	        delete git->second;
 		Node::s_genericDeviceClasses.erase( git );
 	}
+	Node::s_genericDeviceClasses.clear();
+
+
+        while ( !Node::s_basicDeviceClasses.empty() )
+        {
+                map<uint8, string>::iterator git = Node::s_basicDeviceClasses.begin();
+                Node::s_basicDeviceClasses.erase(git);
+        }
+        Node::s_basicDeviceClasses.clear();
+
+
+        while ( !Node::s_roleDeviceClasses.empty() )
+        {
+                map<uint8, Node::DeviceClass*>::iterator git = Node::s_roleDeviceClasses.begin();
+                delete git->second;
+                Node::s_roleDeviceClasses.erase(git);
+        }
+        Node::s_roleDeviceClasses.clear();
+
+        while ( !Node::s_deviceTypeClasses.empty() )
+        {
+                map<uint16, Node::DeviceClass*>::iterator git = Node::s_deviceTypeClasses.begin();
+                delete git->second;
+                Node::s_deviceTypeClasses.erase(git);
+        }
+        Node::s_deviceTypeClasses.clear();
+
+        while ( !Node::s_nodeTypes.empty() )
+        {
+                map<uint8, Node::DeviceClass*>::iterator git = Node::s_nodeTypes.begin();
+                delete git->second;
+                Node::s_nodeTypes.erase(git);
+        }
+        Node::s_nodeTypes.clear();
 
 	Log::Destroy();
 }
@@ -255,7 +297,7 @@ void Manager::WriteConfig
 {
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
-		driver->WriteConfig();
+		driver->WriteCache();
 		Log::Write( LogLevel_Info, "mgr,     Manager::WriteConfig completed for driver with home ID of 0x%.8x", _homeId );
 	}
 	else
@@ -512,6 +554,24 @@ bool Manager::IsBridgeController
 	}
 
 	Log::Write( LogLevel_Info, "mgr,     IsBridgeController() failed - _homeId %d not found", _homeId );
+	return false;
+}
+
+//-----------------------------------------------------------------------------
+// <Manager::HasExtendedTxStatus>
+//
+//-----------------------------------------------------------------------------
+bool Manager::HasExtendedTxStatus
+(
+		uint32 const _homeId
+)
+{
+	if( Driver* driver = GetDriver( _homeId ) )
+	{
+		return driver->HasExtendedTxStatus();
+	}
+
+	Log::Write( LogLevel_Info, "mgr,     HasExtendedTxStatus() failed - _homeId %d not found", _homeId );
 	return false;
 }
 
@@ -1615,6 +1675,51 @@ void Manager::SetNodeLevel
 }
 
 //-----------------------------------------------------------------------------
+//	Instances
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+// <Manager::GetInstanceLabel>
+// Gets the user-friendly Instance label for the valueID
+//-----------------------------------------------------------------------------
+string Manager::GetInstanceLabel
+(
+		ValueID const &_id
+)
+{
+	return GetInstanceLabel(_id.GetHomeId(), _id.GetNodeId(), _id.GetCommandClassId(), _id.GetInstance());
+}
+//-----------------------------------------------------------------------------
+// <Manager::GetInstanceLabel>
+// Gets the user-friendly Instance label for the cc and instance
+//-----------------------------------------------------------------------------
+string Manager::GetInstanceLabel
+(
+		uint32 const _homeId,
+		uint8 const _node,
+		uint8 const _cc,
+		uint8 const _instance
+)
+{
+	string label;
+	if( Driver* driver = GetDriver( _homeId ) )
+	{
+		LockGuard LG(driver->m_nodeMutex);
+		if( Node* node = driver->GetNode( _node ) )
+		{
+			label = node->GetInstanceLabel(_cc, _instance);
+			return label;
+		}
+		OZW_ERROR(OZWException::OZWEXCEPTION_INVALID_NODEID, "Invalid Node passed to GetInstanceLabel");
+	}
+	else
+	{
+		OZW_ERROR(OZWException::OZWEXCEPTION_INVALID_HOMEID, "Invalid HomeId passed to GetInstanceLabel");
+	}
+	return label;
+}
+
+//-----------------------------------------------------------------------------
 //	Values
 //-----------------------------------------------------------------------------
 
@@ -1642,9 +1747,20 @@ string Manager::GetValueLabel
 			value->Release();
 			return label;
 		} else {
-			if( Value* value = driver->GetValue( _id ) )
+			bool useinstancelabels = true;
+			Options::Get()->GetOptionAsBool( "IncludeInstanceLabel", &useinstancelabels );
+			Node* node = driver->GetNode( _id.GetNodeId() );
+			if ( (useinstancelabels) && ( node ) )
 			{
-				label = value->GetLabel();
+				if ( node->GetNumInstances(_id.GetCommandClassId()) > 1 )
+				{
+					label = GetInstanceLabel(_id).append(" ");
+				}
+			}
+			if ( Value* value = driver->GetValue( _id ) )
+			{
+
+				label.append(value->GetLabel());
 				value->Release();
 				return label;
 			}
@@ -2713,7 +2829,27 @@ bool Manager::SetValue
 				}
 			}
 		}
-	} else {
+	} else if( ValueID::ValueType_BitSet == _id.GetType() )
+	{
+		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
+		{
+			if( _id.GetNodeId() != driver->GetControllerNodeId() )
+			{
+				LockGuard LG(driver->m_nodeMutex);
+				if( ValueBitSet* value = static_cast<ValueBitSet*>( driver->GetValue( _id ) ) )
+				{
+					if (value->GetSize() == 1) {
+						res = value->Set(_value);
+						value->Release();
+					} else {
+						OZW_ERROR(OZWException::OZWEXCEPTION_CANNOT_CONVERT_VALUEID, "BitSet ValueID is Not of Size 1 (SetValue uint8)");
+					}
+				} else {
+					OZW_ERROR(OZWException::OZWEXCEPTION_INVALID_VALUEID, "Invalid ValueID passed to SetValue");
+				}
+			}
+		}
+    } else {
 		OZW_ERROR(OZWException::OZWEXCEPTION_CANNOT_CONVERT_VALUEID, "ValueID passed to SetValue is not a Byte Value");
 	}
 
@@ -2803,7 +2939,27 @@ bool Manager::SetValue
 				}
 			}
 		}
-	} else {
+	} else if( ValueID::ValueType_BitSet == _id.GetType() )
+	{
+		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
+		{
+			if( _id.GetNodeId() != driver->GetControllerNodeId() )
+			{
+				LockGuard LG(driver->m_nodeMutex);
+				if( ValueBitSet* value = static_cast<ValueBitSet*>( driver->GetValue( _id ) ) )
+				{
+					if (value->GetSize() == 4) {
+						res = value->Set(_value);
+						value->Release();
+					} else {
+						OZW_ERROR(OZWException::OZWEXCEPTION_CANNOT_CONVERT_VALUEID, "BitSet ValueID is Not of Size 4 (SetValue uint32)");
+					}
+				} else {
+					OZW_ERROR(OZWException::OZWEXCEPTION_INVALID_VALUEID, "Invalid ValueID passed to SetValue");
+				}
+			}
+		}
+    } else {
 		OZW_ERROR(OZWException::OZWEXCEPTION_CANNOT_CONVERT_VALUEID, "ValueID passed to SetValue is not a Int Value");
 	}
 
@@ -2874,7 +3030,27 @@ bool Manager::SetValue
 				}
 			}
 		}
-	} else {
+	} else if( ValueID::ValueType_BitSet == _id.GetType() )
+	{
+		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
+		{
+			if( _id.GetNodeId() != driver->GetControllerNodeId() )
+			{
+				LockGuard LG(driver->m_nodeMutex);
+				if( ValueBitSet* value = static_cast<ValueBitSet*>( driver->GetValue( _id ) ) )
+				{
+					if (value->GetSize() == 2) {
+						res = value->Set(_value);
+						value->Release();
+					} else {
+						OZW_ERROR(OZWException::OZWEXCEPTION_CANNOT_CONVERT_VALUEID, "BitSet ValueID is Not of Size 2 (SetValue uint16)");
+					}
+				} else {
+					OZW_ERROR(OZWException::OZWEXCEPTION_INVALID_VALUEID, "Invalid ValueID passed to SetValue");
+				}
+			}
+		}
+    } else {
 		OZW_ERROR(OZWException::OZWEXCEPTION_CANNOT_CONVERT_VALUEID, "ValueID passed to SetValue is not a Short Value");
 	}
 
@@ -3087,7 +3263,7 @@ bool Manager::RefreshValue
 		{
 			CommandClass* cc = node->GetCommandClass( _id.GetCommandClassId() );
 			if (cc) {
-				uint8 index = _id.GetIndex();
+				uint16_t index = _id.GetIndex();
 				uint8 instance = _id.GetInstance();
 				Log::Write( LogLevel_Info, "mgr,     Refreshing node %d: %s index = %d instance = %d (to confirm a reported change)", node->m_nodeId, cc->GetCommandClassName().c_str(), index, instance );
 				cc->RequestValue( 0, index, instance, Driver::MsgQueue_Send );
@@ -4304,7 +4480,41 @@ bool Manager::DeleteButton
 	return false;
 }
 
-
+//-----------------------------------------------------------------------------
+// <Manager::SendRawData>
+// Send a custom message to a node.
+//-----------------------------------------------------------------------------
+void Manager::SendRawData
+(
+	uint32 const  _homeId,
+	uint8  const  _nodeId,
+	string const& _logText,
+	uint8  const  _msgType,
+	bool   const  _sendSecure,
+	uint8  const* _content,
+	uint8  const  _length
+)
+{
+	if ( Driver *driver = GetDriver( _homeId ) )
+	{
+		LockGuard LG(driver->m_nodeMutex);
+		Node* node = driver->GetNode( _nodeId );
+		if ( node )
+		{
+			Msg* msg = new Msg( _logText, _nodeId, _msgType, FUNC_ID_ZW_SEND_DATA, true );
+			for( uint8 i = 0; i < _length; i++ )
+			{
+				msg->Append( _content[i] );
+			}
+			msg->Append( driver->GetTransmitOptions() );
+			if ( _sendSecure )
+			{
+				msg->setEncrypted();
+			}
+			driver->SendMsg( msg, Driver::MsgQueue_Send );
+		}
+	}
+}
 
 
 //-----------------------------------------------------------------------------
@@ -5046,10 +5256,62 @@ void Manager::GetNodeStatistics
 }
 
 //-----------------------------------------------------------------------------
-// <Manager::GetNodeStatistics>
-// Retrieve driver based counters.
+// <Manager::GetNodeRouteScheme>
+// Convert the RouteScheme to a String
 //-----------------------------------------------------------------------------
-string Manager::GetMetaData
+string Manager::GetNodeRouteScheme
+(
+		Node::NodeData *_data
+)
+{
+	switch (_data->m_routeScheme) {
+		case ROUTINGSCHEME_IDLE:
+			return "Idle";
+		case ROUTINGSCHEME_DIRECT:
+			return "Direct";
+		case ROUTINGSCHEME_CACHED_ROUTE_SR:
+			return "Static Route";
+		case ROUTINGSCHEME_CACHED_ROUTE:
+			return "Last Working Route";
+		case ROUTINGSCHEME_CACHED_ROUTE_NLWR:
+			return "Next to Last Working Route";
+		case ROUTINGSCHEME_ROUTE:
+			return "Auto Route";
+		case ROUTINGSCHEME_RESORT_DIRECT:
+			return "Resort to Direct";
+		case ROUTINGSCHEME_RESORT_EXPLORE:
+			return "Explorer Route";
+	}
+	return "Unknown";
+}
+
+//-----------------------------------------------------------------------------
+// <Manager::GetNodeRouteSpeed>
+// Convert the RouteSpeed to a String.
+//-----------------------------------------------------------------------------
+string Manager::GetNodeRouteSpeed
+(
+		Node::NodeData *_data
+)
+{
+	switch(_data->m_routeSpeed) {
+		case ROUTE_SPEED_AUTO:
+			return "Auto";
+		case ROUTE_SPEED_9600:
+			return "9600";
+		case ROUTE_SPEED_40K:
+			return "40K";
+		case ROUTE_SPEED_100K:
+			return "100K";
+	}
+	return "Unknown";
+}
+
+//-----------------------------------------------------------------------------
+// <Manager::GetMetaData>
+// Retrieve MetaData about a Node.
+//-----------------------------------------------------------------------------
+string const Manager::GetMetaData
 (
 		uint32 const _homeId,
 		uint8 const _nodeId,
@@ -5062,6 +5324,27 @@ string Manager::GetMetaData
 	}
 	return "";
 }
+
+//-----------------------------------------------------------------------------
+// <Manager::GetChangeLog>
+// Retrieve ChangeLog of a Configuration File about a Node.
+//-----------------------------------------------------------------------------
+Node::ChangeLogEntry const Manager::GetChangeLog
+(
+		uint32 const _homeId,
+		uint8 const _nodeId,
+		uint32_t revision
+)
+{
+	if( Driver* driver = GetDriver( _homeId ) )
+	{
+		return driver->GetChangeLog( _nodeId, revision );
+	}
+	Node::ChangeLogEntry cle;
+	cle.revision = -1;
+	return cle;
+}
+
 
 //-----------------------------------------------------------------------------
 // <Manager::checkLatestConfigFileRevision>

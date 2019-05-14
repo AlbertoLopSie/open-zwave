@@ -58,11 +58,11 @@ Basic::Basic
 	uint32 const _homeId,
 	uint8 const _nodeId
 ):
-	CommandClass( _homeId, _nodeId ),
-	m_mapping( 0 ),
-	m_ignoreMapping( false ),
-	m_setAsReport( false )
+	CommandClass( _homeId, _nodeId )
 {
+		m_com.EnableFlag(COMPAT_FLAG_BASIC_IGNOREREMAPPING, false);
+		m_com.EnableFlag(COMPAT_FLAG_BASIC_MAPPING, 0);
+		m_com.EnableFlag(COMPAT_FLAG_BASIC_SETASREPORT, false);
 }
 
 //-----------------------------------------------------------------------------
@@ -75,57 +75,9 @@ void Basic::ReadXML
 )
 {
 	CommandClass::ReadXML( _ccElement );
-
-	char const* str = _ccElement->Attribute("ignoremapping");
-	if( str )
-	{
-		m_ignoreMapping = !strcmp( str, "true");
-	}
-
-	int32 intVal;
-	if( TIXML_SUCCESS == _ccElement->QueryIntAttribute( "mapping", &intVal ) )
-	{
-		if( intVal < 256 && intVal != 0 )
-		{
-			SetMapping( (uint8)intVal, false );
-		}
-	}
-
-	str = _ccElement->Attribute("setasreport");
-	if( str )
-	{
-		m_setAsReport = !strcmp( str, "true");
-	}
+	SetMapping(m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING), false);
 }
 
-//-----------------------------------------------------------------------------
-// <Basic::WriteXML>
-// Save changed configuration
-//-----------------------------------------------------------------------------
-void Basic::WriteXML
-(
-	TiXmlElement* _ccElement
-)
-{
-	CommandClass::WriteXML( _ccElement );
-
-	if( m_ignoreMapping )
-	{
-		_ccElement->SetAttribute( "ignoremapping", "true" );
-	}
-
-	char str[32];
-	if( m_mapping != 0 )
-	{
-		snprintf( str, sizeof(str), "%d", m_mapping );
-		_ccElement->SetAttribute( "mapping", str );
-	}
-
-	if( m_setAsReport )
-	{
-		_ccElement->SetAttribute( "setasreport", "true" );
-	}
-}
 
 //-----------------------------------------------------------------------------
 // <Basic::RequestState>
@@ -145,8 +97,8 @@ bool Basic::RequestState
 	}
 	if( _requestFlags & RequestFlag_Dynamic )
 	{
-		if ((m_ignoreMapping || (!m_ignoreMapping && m_mapping == 0)))
-			return RequestValue( _requestFlags, 0, _instance, _queue );
+		if ((m_com.GetFlagBool(COMPAT_FLAG_BASIC_IGNOREREMAPPING) || (!m_com.GetFlagBool(COMPAT_FLAG_BASIC_IGNOREREMAPPING) && m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING) == 0)))
+			return RequestValue( _requestFlags, ValueID_Index_Basic::Set, _instance, _queue );
 	}
 	return false;
 }
@@ -163,7 +115,7 @@ bool Basic::RequestValue
 	Driver::MsgQueue const _queue
 )
 {
-	if ( IsGetSupported() )
+	if ( m_com.GetFlagBool(COMPAT_FLAG_GETSUPPORTED) )
 	{
 		Msg* msg = new Msg( "BasicCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId() );
 		msg->SetInstance( this, _instance );
@@ -195,11 +147,11 @@ bool Basic::HandleMsg
 	{
 		// Level
 		Log::Write( LogLevel_Info, GetNodeId(), "Received Basic report from node %d: level=%d", GetNodeId(), _data[1] );
-		if( !m_ignoreMapping && m_mapping != 0 )
+		if( !m_com.GetFlagBool(COMPAT_FLAG_BASIC_IGNOREREMAPPING) && m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING) != 0 )
 		{
-			UpdateMappedClass( _instance, m_mapping, _data[1] );
+			UpdateMappedClass( _instance, m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING), _data[1] );
 		}
-		else if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, 0 ) ) )
+		else if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_Basic::Set ) ) )
 		{
 			value->OnValueRefreshed( _data[1] );
 			value->Release();
@@ -211,14 +163,14 @@ bool Basic::HandleMsg
 
 	if( BasicCmd_Set == (BasicCmd)_data[0] )
 	{
-		if( m_setAsReport )
+		if( m_com.GetFlagBool(COMPAT_FLAG_BASIC_SETASREPORT) )
 		{
 			Log::Write( LogLevel_Info, GetNodeId(), "Received Basic set from node %d: level=%d. Treating it as a Basic report.", GetNodeId(), _data[1] );
-			if( !m_ignoreMapping && m_mapping != 0 )
+			if( !m_com.GetFlagBool(COMPAT_FLAG_BASIC_IGNOREREMAPPING) && m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING) != 0 )
 			{
-				UpdateMappedClass( _instance, m_mapping, _data[1] );
+				UpdateMappedClass( _instance, m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING), _data[1] );
 			}
-			else if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, 0 ) ) )
+			else if( ValueByte* value = static_cast<ValueByte*>( GetValue( _instance, ValueID_Index_Basic::Set ) ) )
 			{
 				value->OnValueRefreshed( _data[1] );
 				value->Release();
@@ -292,7 +244,7 @@ void Basic::Set
 {
 	// This may look like a long winded way to do this, but
 	// it ensures that all the proper notifications get sent.
-	if( ValueByte* value = static_cast<ValueByte*>( GetValue( 1, 0 ) ) )
+	if( ValueByte* value = static_cast<ValueByte*>( GetValue( 1, ValueID_Index_Basic::Set ) ) )
 	{
 		value->Set( _level );
 		value->Release();
@@ -325,7 +277,7 @@ bool Basic::SetMapping
 					ccstr = cc->GetCommandClassName();
 				}
 			}
-			if( m_ignoreMapping )
+			if( m_com.GetFlagBool(COMPAT_FLAG_BASIC_IGNOREREMAPPING) )
 			{
 				Log::Write( LogLevel_Info, GetNodeId(), "    COMMAND_CLASS_BASIC will not be mapped to %s (ignored)", ccstr.c_str() );
 			}
@@ -334,12 +286,12 @@ bool Basic::SetMapping
 				Log::Write( LogLevel_Info, GetNodeId(), "    COMMAND_CLASS_BASIC will be mapped to %s", ccstr.c_str() );
 			}
 		}
-		m_mapping = _commandClassId;
-		RemoveValue( 1, 0 );
+		m_com.SetFlagByte(COMPAT_FLAG_BASIC_MAPPING, _commandClassId);
+		RemoveValue( 1, ValueID_Index_Basic::Set );
 		res = true;
 	}
 
-	if( m_mapping == 0 )
+	if( m_com.GetFlagByte(COMPAT_FLAG_BASIC_MAPPING) == 0 )
 	{
 		if (_doLog )
 			Log::Write( LogLevel_Info, GetNodeId(), "    COMMAND_CLASS_BASIC is not mapped" );
@@ -347,9 +299,9 @@ bool Basic::SetMapping
 		{
 			if (m_instances.size() > 0) {
 				for (unsigned int i = 0; i < m_instances.size(); i++)
-					node->CreateValueByte( ValueID::ValueGenre_Basic, GetCommandClassId(), m_instances[i], 0, "Basic", "", false, false, 0, 0 );
+					node->CreateValueByte( ValueID::ValueGenre_Basic, GetCommandClassId(), m_instances[i], ValueID_Index_Basic::Set, "Basic", "", false, false, 0, 0 );
 			} else {
-				node->CreateValueByte( ValueID::ValueGenre_Basic, GetCommandClassId(), 0, 0, "Basic", "", false, false, 0, 0 );
+				node->CreateValueByte( ValueID::ValueGenre_Basic, GetCommandClassId(), 0, ValueID_Index_Basic::Set, "Basic", "", false, false, 0, 0 );
 			}
 		}
 	}

@@ -69,14 +69,12 @@ namespace OpenZWave
 
 		static uint8 const StaticGetCommandClassId(){ return 0x98; }
 		static string const StaticGetCommandClassName(){ return "COMMAND_CLASS_SECURITY"; }
-		bool Init();
+		bool Init(uint32 const _instance = 1);
 		bool ExchangeNetworkKeys();
 		// From CommandClass
 		virtual uint8 const GetCommandClassId()const{ return StaticGetCommandClassId(); }
 		virtual string const GetCommandClassName()const{ return StaticGetCommandClassName(); }
 		virtual bool HandleMsg( uint8 const* _data, uint32 const _length, uint32 const _instance = 1 );
-		void ReadXML(TiXmlElement const* _ccElement);
-		void WriteXML(TiXmlElement* _ccElement);
 		void SendMsg( Msg* _msg );
 
 	protected:
@@ -86,7 +84,7 @@ namespace OpenZWave
 		Security( uint32 const _homeId, uint8 const _nodeId );
 		bool RequestState( uint32 const _requestFlags, uint8 const _instance, Driver::MsgQueue const _queue);
 		bool RequestValue( uint32 const _requestFlags, uint16 const _index, uint8 const _instance, Driver::MsgQueue const _queue);
-		bool HandleSupportedReport(uint8 const* _data, uint32 const _length);
+		bool HandleSupportedReport(uint8 const* _data, uint32 const _length, uint32 const _instance = 1);
 
 		bool m_schemeagreed;
 		bool m_secured;
