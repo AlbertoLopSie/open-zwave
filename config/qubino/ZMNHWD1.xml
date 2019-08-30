@@ -1,31 +1,98 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Product xmlns='http://code.google.com/p/open-zwave/'>
 	<!-- Qubino: ZMNHWD1 Flush RGBW Dimmer Z-Wave Plus-->
+	<!-- XML modified to match configuration parameters according to Qubino Flush RGBW Dimmer Z-Wave Plus extended manual ver. 2.2 -->
+	
 	<!-- Configuration -->
 	<CommandClass id="112">
-		<Value type="list" genre="config" instance="1" index="1" label="Input switch type" size="1" min="1" max="2" value="1">
-			<Help>Please power cycle the device when parameter is changed</Help>
-			<Item label="Bi-stable" value="1"/>
-			<Item label="Mono-stable" value="2"/>
+		<Value type="list" genre="config" instance="1" index="1" label="Input IN1 configuration" size="1" min="1" max="10" value="4">
+			<Item label="Normal mode - momentary switch type" value="1"/>
+			<Item label="Normal mode - toggle switch type" value="2"/>
+			<Item label="Normal mode - toggle with memory switch type (Motion sensor)" value="3"/>
+			<Item label="Brightness mode - momentary switch type" value="4"/>
+			<Item label="Brightness mode - toggle switch type" value="5"/>
+			<Item label="Brightness mode - toggle with memory switch type (Motion sensor)" value="6"/>
+			<Item label="Rainbow mode - momentary switch type" value="7"/>
+			<Item label="Scene mode - momentary switch type" value="4"/>
+			<Item label="Scene mode - toggle switch type" value="5"/>
+			<Item label="Scene mode - toggle with memory switch type (Motion sensor)" value="6"/>
 		</Value>
-		<Value type="list" genre="config" instance="1" index="2" label="Switch mode" size="1" min="0" max="1" value="3">
-			<Help> Using this parameter, it is possible to select various modes of RGBW Dimmer operation</Help>
-			<Item label="Normal Mode" value="1"/>
-			<Item label="Brightness Mode" value="2"/>
-			<Item label="Rainbow Mode" value="3"/>
+		<Value type="list" genre="config" instance="1" index="2" label="Input IN2 configuration" size="1" min="1" max="10" value="7">
+			<Item label="Normal mode - momentary switch type" value="1"/>
+			<Item label="Normal mode - toggle switch type" value="2"/>
+			<Item label="Normal mode - toggle with memory switch type (Motion sensor)" value="3"/>
+			<Item label="Brightness mode - momentary switch type" value="4"/>
+			<Item label="Brightness mode - toggle switch type" value="5"/>
+			<Item label="Brightness mode - toggle with memory switch type (Motion sensor)" value="6"/>
+			<Item label="Rainbow mode - momentary switch type" value="7"/>
+			<Item label="Scene mode - momentary switch type" value="4"/>
+			<Item label="Scene mode - toggle switch type" value="5"/>
+			<Item label="Scene mode - toggle with memory switch type (Motion sensor)" value="6"/>
 		</Value>
-		<Value type="list" genre="config" instance="1" index="3" label="Auto scene mode set" size="1" min="0" max="5" value="1">
+		<Value type="list" genre="config" instance="1" index="3" label="Input IN3 configuration" size="1" min="1" max="10" value="8">
+			<Item label="Normal mode - momentary switch type" value="1"/>
+			<Item label="Normal mode - toggle switch type" value="2"/>
+			<Item label="Normal mode - toggle with memory switch type (Motion sensor)" value="3"/>
+			<Item label="Brightness mode - momentary switch type" value="4"/>
+			<Item label="Brightness mode - toggle switch type" value="5"/>
+			<Item label="Brightness mode - toggle with memory switch type (Motion sensor)" value="6"/>
+			<Item label="Rainbow mode - momentary switch type" value="7"/>
+			<Item label="Scene mode - momentary switch type" value="4"/>
+			<Item label="Scene mode - toggle switch type" value="5"/>
+			<Item label="Scene mode - toggle with memory switch type (Motion sensor)" value="6"/>
+		</Value>
+		<Value type="list" genre="config" instance="1" index="4" label="Input IN4 configuration" size="1" min="1" max="10" value="1">
+			<Item label="Normal mode - momentary switch type" value="1"/>
+			<Item label="Normal mode - toggle switch type" value="2"/>
+			<Item label="Normal mode - toggle with memory switch type (Motion sensor)" value="3"/>
+			<Item label="Brightness mode - momentary switch type" value="4"/>
+			<Item label="Brightness mode - toggle switch type" value="5"/>
+			<Item label="Brightness mode - toggle with memory switch type (Motion sensor)" value="6"/>
+			<Item label="Rainbow mode - momentary switch type" value="7"/>
+			<Item label="Scene mode - momentary switch type" value="4"/>
+			<Item label="Scene mode - toggle switch type" value="5"/>
+			<Item label="Scene mode - toggle with memory switch type (Motion sensor)" value="6"/>
+		</Value>
+		<Value type="list" genre="config" instance="1" index="5" label="Auto scene mode set" size="1" min="1" max="6" value="1">
 			<Help>Activation of the programmed scene changing color shades</Help>
-			<Item label="None" value="0"/>
-			<Item label="Ocean" value="1"/>
-			<Item label="Lightning" value="2"/>
-			<Item label="Rainbow" value="3"/>
-			<Item label="Snow" value="4"/>
-			<Item label="Sun" value="5"/>
+			<Item label="Ocean (soft flashing between shades of blue colour)" value="1"/>
+			<Item label="Lightning (fast flashing of white colour)" value="2"/>
+			<Item label="Rainbow (flowing between colours of rainbow)" value="3"/>
+			<Item label="Snow (flowing between shades of white and cyan colour)" value="4"/>
+			<Item label="Romantic (soft flowing of the red colour)" value="5"/>
+			<Item label="Party scene (random flashing between colours)" value="6"/>
 		</Value>
-		<Value type="byte" genre="config" instance="1" index="4" label="Auto scene duration" size="1" min="-128" max="127" value="3">
-			<Help>Using this parameter, it is possible to change Auto scene mode duration. 1 - 127 delay duration is from 1s to 127s, -128 ~ -1 delay duration is from 1min. to
-127min</Help>
+		<Value type="short" genre="config" instance="1" index="6" label="Auto scene duration" size="2" min="1" max="1127" value="3">
+			<Help>Using this parameter, it is possible to change Auto scene mode duration. 1 - 127 delay duration is from 1s to 127s, 1001-1127 delay duration is from 1min. to 127 min. This parameter has no effect on Lightning and Party scene.</Help>
+		</Value>
+		<Value type="list" genre="config" instance="1" index="7" label="Memorize device status at power cut" size="1" min="0" max="1" value="0">
+			<Item label="Device does not memorize its status at power cut. Load is disconnected" value="0"/>
+			<Item label="Device does memorize its status at power cut. Load will be set to the status from before power cut" value="1"/>
+		</Value>
+		<Value type="short" genre="config" instance="1" index="8" label="Automatic turning off output after set time" size="2" min="0" max="32536" value="0">
+			<Help>Output is turned off automatically after the time set in this parameter. 0 - Auto OFF disabled. 1-32536 seconds auto OFF.</Help>
+		</Value>
+		<Value type="short" genre="config" instance="1" index="9" label="Automatic turning on output after set time" size="2" min="0" max="32536" value="0">
+			<Help>Output is turned on automatically after the time set in this parameter. 0 - Auto ON disabled. 1-32536 seconds auto ON.</Help>
+		</Value>
+		<Value type="byte" genre="config" instance="1" index="10" label="MAX dimming value (%)" size="1" min="2" max="99" value="99">
+			<Help>2-99 = 2% - 99%</Help>
+		</Value>
+		<Value type="byte" genre="config" instance="1" index="11" label="MIN dimming value (%)" size="1" min="1" max="98" value="1">
+			<Help>1-98 = 1% - 98% NOTE: The minimum level may not be higher than the MAX dimming value</Help>
+		</Value>
+		<Value type="byte" genre="config" instance="1" index="12" label="Dimming time (soft on/off)" size="1" min="5" max="25" value="10">
+			<Help>5-25 = from 0.5 to 2.5 seconds</Help>
+		</Value>
+		<Value type="byte" genre="config" instance="1" index="13" label="Dimming time when key pressed" size="1" min="1" max="127" value="3">
+			<Help>1-127 = from 1 to 127 seconds. NOTE: Dimming time also depends on Min and Max dimming value.</Help>
+		</Value>
+		<Value type="list" genre="config" instance="1" index="14" label="Four dimmers mode" size="1" min="0" max="3" value="0">
+			<Help>NOTE: If the parameter 14 is enabled, parameter 1-4 has no effect. After parameter change first exclude device (without setting parameters to default value) and then re include the device.</Help>
+			<Item label="Four dimmers mode disabled" value="0"/>
+			<Item label="Four dimmers mode enabled - momnetary switch type" value="1"/>
+			<Item label="Four dimmers mode enabled - toggle switch type" value="2"/>
+			<Item label="Four dimmers mode enabled - toggle with memory switch type" value="3"/>
 		</Value>
 	</CommandClass>
 	<!-- Association Groups -->
