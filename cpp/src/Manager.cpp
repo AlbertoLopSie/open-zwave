@@ -1412,6 +1412,43 @@ string Manager::GetNodeProductId
 }
 
 //-----------------------------------------------------------------------------
+// <Manager::SetNodePacketDelay>
+// Set a value for PacketDelay of a node
+//-----------------------------------------------------------------------------
+void Manager::SetNodePacketDelay
+(
+        uint32 const _homeId,
+        uint8 const _nodeId,
+        uint32 const& _PacketDelay
+
+)
+{
+    if( Driver* driver = GetDriver( _homeId ) )
+    {
+        driver->SetNodePacketDelay( _nodeId, _PacketDelay );
+    }
+}
+
+//-----------------------------------------------------------------------------
+// <Manager::GetNodePacketDelay>
+// Get the PacketDelayvalue of a node
+//-----------------------------------------------------------------------------
+uint32 Manager::GetNodePacketDelay
+(
+        uint32 const _homeId,
+        uint8 const _nodeId
+)
+{
+    if( Driver* driver = GetDriver( _homeId ) )
+    {
+        uint32 mid = driver->GetNodePacketDelay( _nodeId );
+        return mid;
+    }
+
+    return 0;
+}
+
+//-----------------------------------------------------------------------------
 // <Manager::SetNodeOn>
 // Helper method to turn a node on
 //-----------------------------------------------------------------------------

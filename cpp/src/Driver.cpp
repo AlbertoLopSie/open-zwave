@@ -1298,6 +1298,17 @@ void Driver::RemoveCurrentMsg
 (
 )
 {
+    //OJO: set a delay time interval (microseconds) for slow nodes, usleep(microseconds)
+    uint8 nodeId = GetNodeNumber( m_currentMsg );
+    if( Node* node = GetNodeUnsafe( nodeId ) )
+    {
+       uint32 PacketDelay = node->GetPacketDelay();
+       if (PacketDelay > 0)
+        {
+            usleep(PacketDelay);
+        }
+
+    }
 	Log::Write( LogLevel_Detail, GetNodeNumber( m_currentMsg ), "Removing current message" );
 	if( m_currentMsg != NULL)
 	{
@@ -4567,7 +4578,24 @@ uint32 Driver::GetNodeMaxBaudRate
 
 	return baud;
 }
+//-----------------------------------------------------------------------------
+// <Driver::GetNodePacketDelay>
+// Get the value of PacketDelay for delay between commands
+//-----------------------------------------------------------------------------
+uint32 Driver::GetNodePacketDelay
+(
+        uint8 const _nodeId
+)
+{
+    uint32 t_delay= 0;
+    LockGuard LG(m_nodeMutex);
+    if( Node* node = GetNode( _nodeId ) )
+    {
+        t_delay = node->GetPacketDelay();
+    }
 
+    return t_delay;
+}
 //-----------------------------------------------------------------------------
 // <Driver::GetNodeVersion>
 // Get the version number of a node
@@ -5031,7 +5059,22 @@ void Driver::SetNodeLocation
 		node->SetLocation( _location );
 	}
 }
-
+//-----------------------------------------------------------------------------
+// <Driver::SetNodePacketDelay>
+// Set the PacketDelay value with the specified ID
+//-----------------------------------------------------------------------------
+void Driver::SetNodePacketDelay
+(
+        uint8 const _nodeId,
+        uint32 const& _toSpeed
+)
+{
+    LockGuard LG(m_nodeMutex);
+    if( Node* node = GetNode( _nodeId ) )
+    {
+        node->SetPacketDelay( _toSpeed );
+    }
+}
 //-----------------------------------------------------------------------------
 // <Driver::SetNodeLevel>
 // Helper to set the node level through the basic command class

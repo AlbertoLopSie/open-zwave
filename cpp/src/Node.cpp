@@ -150,6 +150,7 @@ m_numRouteNodes( 0 ),
 m_addingNode( false ),
 m_manufacturerName( "" ),
 m_productName( "" ),
+m_PacketDelay ( 0 ),
 m_nodeName( "" ),
 m_location( "" ),
 m_manufacturerId( 0 ),
@@ -971,7 +972,13 @@ void Node::ReadXML
 		m_nodeType = (uint8)intVal;
 		m_nodePlusInfoReceived = true;
 	}
-
+	
+    	m_PacketDelay = 0;
+    	if( TIXML_SUCCESS == _node->QueryIntAttribute( "PacketDelay", &intVal ) )
+    	{
+        	m_PacketDelay = (uint32)intVal;
+    	}
+	
 	str = _node->Attribute( "type" );
 	if( str )
 	{
@@ -1275,6 +1282,11 @@ void Node::WriteXML
 	snprintf( str, 32, "%d", m_version );
 	nodeElement->SetAttribute( "version", str );
 
+    	
+        snprintf( str, 32, "%d", m_PacketDelay );
+        nodeElement->SetAttribute( "PacketDelay", str );
+    	
+	
 	if( m_security )
 	{
 		nodeElement->SetAttribute( "security", "true" );
@@ -1833,6 +1845,18 @@ void Node::SetLocation
 		// The node supports naming, so we try to write the location into the device
 		cc->SetLocation( _location );
 	}
+}
+
+//-----------------------------------------------------------------------------
+// <Node::PacketDelay>
+// Set the new param PacketDelay value for the node
+//-----------------------------------------------------------------------------
+void Node::SetPacketDelay
+(
+        uint32 const& _PacketDelay
+)
+{
+    	m_PacketDelay = _PacketDelay;
 }
 
 //-----------------------------------------------------------------------------
