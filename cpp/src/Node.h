@@ -370,10 +370,9 @@ namespace OpenZWave
 		
 			string		m_manufacturerName;
 			string		m_productName;
+ 			uint32      m_PacketDelay; 		
 			string		m_nodeName;
 			string		m_location;
- 			uint32      	m_PacketDelay; 
-		
 			uint16		m_manufacturerId;
 			uint16		m_productType;
 			uint16		m_productId;

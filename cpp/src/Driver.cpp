@@ -1305,6 +1305,7 @@ void Driver::RemoveCurrentMsg
        uint32 PacketDelay = node->GetPacketDelay();
        if (PacketDelay > 0)
         {
+			Log::Write( LogLevel_Detail, GetNodeNumber( m_currentMsg ), "Delaying packet for %d uSec",  PacketDelay);
             usleep(PacketDelay);
         }
 
